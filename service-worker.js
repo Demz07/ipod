@@ -1,7 +1,8 @@
-const CACHE_NAME = "ipod-classic-shell-v2";
+const CACHE_NAME = "ipod-classic-shell-v3";
 const SHELL = [
   "./",
   "./index.html",
+  "./youtube-library.js",
   "./manifest.webmanifest",
   "./Apple-Logo-Png-Download-768x950.png",
   "./icons/icon-32.png",
