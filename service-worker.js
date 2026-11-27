@@ -1,4 +1,4 @@
-const CACHE_NAME = "ipod-classic-shell-v1";
+const CACHE_NAME = "ipod-classic-shell-v2";
 const SHELL = [
   "./",
   "./index.html",
