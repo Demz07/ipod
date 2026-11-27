@@ -7,6 +7,13 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>iPod Classic</title>
+    <meta name="theme-color" content="#171b20" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="iPod Classic" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-32.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-180.png" />
     <style>
       * {
         box-sizing: border-box;
@@ -40,9 +47,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        transform: scale(
-          min(1, calc((100dvh - 20px) / 540px), calc((100vw - 16px) / 330px))
-        );
+        transform: scale(var(--ipod-scale, 1));
         transform-origin: center center;
       }
 
@@ -881,6 +886,15 @@
     </style>
   </head>
   <body>
+    <script>
+      // Avoid CSS length division, which is unsupported in some mobile browsers.
+      function resizeIPod() {
+        const scale = Math.max(0.1, Math.min(1, (window.innerHeight - 20) / 540, (window.innerWidth - 16) / 330));
+        document.documentElement.style.setProperty("--ipod-scale", scale);
+      }
+      window.addEventListener("resize", resizeIPod);
+      resizeIPod();
+    </script>
     <div class="ipod-scaler">
       <div class="ipod">
         <div class="screen-bezel">
@@ -1474,6 +1488,7 @@
               }
             },
             onStateChange: (e) => {
+              if (playlist[currentIndex]?.type !== "youtube") return;
               if (e.data === YT.PlayerState.PLAYING) {
                 isPlaying = true;
                 isYtBuffering = false;
@@ -2191,6 +2206,48 @@
                 caption: "Bulk URLs & Playlists",
                 action: () => openYtModal(),
               },
+              {
+                label: "Delete Songs",
+                chevron: true,
+                iconKey: "songs",
+                caption: "Remove songs from queue",
+                action: () => pushMenu("delete-songs"),
+              },
+            ],
+          };
+        }
+
+        if (menuId === "delete-songs") {
+          return {
+            title: "Delete Songs",
+            items: playlist.length ? playlist.map((track) => ({
+              label: track.title,
+              chevron: true,
+              art: track.cover,
+              caption: track.artist,
+              action: () => {
+                navStack.push({ view: "menu", menuId: "delete-confirm", selectedIndex: 0, track });
+                renderCurrentView();
+              },
+            })) : [{
+              label: "No songs to delete",
+              caption: "Library is Empty",
+              action: () => {},
+            }],
+          };
+        }
+
+        if (menuId === "delete-confirm") {
+          const track = currentNav().track;
+          return {
+            title: "Delete Song?",
+            items: [
+              { label: "Cancel", caption: track.title, art: track.cover, action: () => goBack() },
+              { label: "Delete Song", caption: track.title, art: track.cover, action: () => {
+                deleteTrack(track);
+                goBack();
+                showStatusToast("Song removed");
+              } },
             ],
           };
         }
@@ -2579,6 +2636,38 @@
         volumeTimer = setTimeout(() => {
           volumeRow.classList.remove("active");
         }, 1500);
+      }
+
+      // Remove a queued track without deleting the original file on the device.
+      function deleteTrack(track) {
+        const index = playlist.indexOf(track);
+        if (index === -1) return;
+
+        const wasCurrent = index === currentIndex;
+        playlist.splice(index, 1);
+        if (wasCurrent) {
+          currentIndex = -1;
+          isPlaying = false;
+          isYtBuffering = false;
+          pendingYtId = null;
+          isShadowStreamActive = false;
+          audio.pause();
+          audio.removeAttribute("src");
+          audio.load();
+          shadowAudio.pause();
+          shadowAudio.removeAttribute("src");
+          shadowAudio.load();
+          if (ytPlayer && isYtReady && typeof ytPlayer.stopVideo === "function") {
+            ytPlayer.stopVideo();
+          }
+          setPlayStateIndicator("stopped");
+        } else if (index < currentIndex) {
+          currentIndex--;
+        }
+        flowIndex = Math.max(0, Math.min(flowIndex - (index < flowIndex ? 1 : 0), playlist.length - 1));
+        if (track.type === "local" && track.url?.startsWith("blob:")) URL.revokeObjectURL(track.url);
+        if (track.cover?.startsWith("blob:")) URL.revokeObjectURL(track.cover);
+        updateNowPlayingUI();
       }
 
       // --- PLAYBACK CONTROLLER ---
@@ -3250,6 +3339,15 @@
 
       // Initial Boot Render
       renderCurrentView();
+    </script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+            console.warn("Service worker registration failed:", error);
+          });
+        });
+      }
     </script>
   </body>
 </html>
