@@ -1,0 +1,3255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>iPod Classic</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent !important;
+        outline: none !important;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      body {
+        background: radial-gradient(circle at 50% 30%, #30353d, #0f1114);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family:
+          "Lucida Grande", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      /* Responsive auto-scaler for all screen sizes */
+      .ipod-scaler {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transform: scale(
+          min(1, calc((100dvh - 20px) / 540px), calc((100vw - 16px) / 330px))
+        );
+        transform-origin: center center;
+      }
+
+      /* iPod Classic Chassis */
+      .ipod {
+        width: 324px;
+        height: 530px;
+        background: linear-gradient(
+          145deg,
+          #f7f8fa 0%,
+          #e1e3e8 40%,
+          #c9ccd3 100%
+        );
+        border-radius: 40px;
+        box-shadow:
+          25px 30px 60px rgba(0, 0, 0, 0.75),
+          -10px -10px 30px rgba(255, 255, 255, 0.35),
+          inset 0 1px 2px rgba(255, 255, 255, 1),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.45);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 22px 20px 28px;
+        position: relative;
+      }
+
+      /* Bezel */
+      .screen-bezel {
+        width: 280px;
+        height: 215px;
+        background: #0d0f12;
+        border-radius: 10px;
+        padding: 8px;
+        box-shadow:
+          inset 3px 3px 6px rgba(0, 0, 0, 0.9),
+          inset -1px -1px 2px rgba(255, 255, 255, 0.2),
+          0 1px 2px rgba(255, 255, 255, 0.5);
+      }
+
+      /* LCD Screen */
+      .screen {
+        width: 100%;
+        height: 100%;
+        background: #ffffff;
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Boot Screen */
+      .boot-screen {
+        position: absolute;
+        inset: 0;
+        background: #000000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 90;
+        transition: opacity 0.4s ease;
+        cursor: pointer;
+      }
+      .boot-screen.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .boot-logo-svg {
+        width: 46px;
+        height: 54px;
+        filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.25));
+      }
+
+      /* Status Bar */
+      .status-bar {
+        height: 21px;
+        background: linear-gradient(
+          to bottom,
+          #fefefe 0%,
+          #dfe1e5 48%,
+          #cacdcf 52%,
+          #e2e4e7 100%
+        );
+        border-bottom: 1px solid #8c9197;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 8px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #222;
+        z-index: 20;
+        flex-shrink: 0;
+      }
+
+      .status-title {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 185px;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+      }
+
+      .status-icons {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .play-state-icon {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 11px;
+        height: 11px;
+      }
+      .play-state-icon svg {
+        width: 10px;
+        height: 10px;
+        display: block;
+      }
+
+      .battery {
+        width: 22px;
+        height: 10px;
+        border: 1px solid #5c6066;
+        border-radius: 2px;
+        position: relative;
+        padding: 1px;
+        background: #fff;
+      }
+      .battery::after {
+        content: "";
+        position: absolute;
+        right: -3px;
+        top: 2px;
+        width: 2px;
+        height: 4px;
+        background: #5c6066;
+        border-radius: 0 1px 1px 0;
+      }
+      .battery-level {
+        height: 100%;
+        width: 85%;
+        background: linear-gradient(
+          to bottom,
+          #7de863 0%,
+          #44b72d 50%,
+          #379d23 100%
+        );
+        border-radius: 1px;
+      }
+
+      .screen-body {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: #ffffff;
+      }
+
+      .view {
+        position: absolute;
+        inset: 0;
+        display: none;
+      }
+      .view.active {
+        display: flex;
+      }
+
+      /* --- VIEW 1: SPLIT MENU --- */
+      .split-menu {
+        width: 100%;
+        height: 100%;
+        flex-direction: row;
+      }
+
+      .menu-list {
+        width: 53%;
+        height: 100%;
+        background: #ffffff;
+        border-right: 1px solid #c9cdd3;
+        overflow-y: auto;
+        scrollbar-width: none;
+      }
+      .menu-list::-webkit-scrollbar {
+        display: none;
+      }
+
+      .menu-item {
+        height: 22px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        font-weight: 700;
+        color: #111;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+      }
+
+      .menu-item-label {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 112px;
+      }
+
+      .menu-item.selected {
+        background: linear-gradient(
+          to bottom,
+          #59a8f7 0%,
+          #2374e1 50%,
+          #1b65cc 100%
+        );
+        color: #ffffff;
+        text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+      }
+
+      .menu-chevron {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 4px;
+        color: #7a8088;
+      }
+      .menu-chevron svg {
+        width: 9px;
+        height: 9px;
+        fill: currentColor;
+      }
+      .menu-item.selected .menu-chevron {
+        color: #ffffff;
+      }
+
+      .preview-pane {
+        width: 47%;
+        height: 100%;
+        background: linear-gradient(135deg, #f3f5f8 0%, #dfe3ea 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: inset 3px 0 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .preview-art {
+        width: 82px;
+        height: 82px;
+        border-radius: 3px;
+        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.28);
+        object-fit: cover;
+        background: #222;
+        transform: perspective(300px) rotateY(-8deg);
+      }
+
+      .preview-icon-box {
+        width: 76px;
+        height: 76px;
+        border-radius: 16px;
+        background: linear-gradient(
+          145deg,
+          #ffffff 0%,
+          #e7ebf2 55%,
+          #cfd5e0 100%
+        );
+        box-shadow:
+          0 6px 14px rgba(0, 0, 0, 0.2),
+          inset 0 1px 2px #ffffff,
+          inset 0 -1px 2px rgba(0, 0, 0, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 11px;
+        position: relative;
+      }
+      .preview-icon-box::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 6px;
+        right: 6px;
+        height: 42%;
+        border-radius: 12px 12px 24px 24px;
+        background: linear-gradient(
+          to bottom,
+          rgba(255, 255, 255, 0.78),
+          rgba(255, 255, 255, 0.05)
+        );
+        pointer-events: none;
+      }
+      .preview-icon-box svg {
+        width: 52px;
+        height: 52px;
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+        z-index: 1;
+      }
+
+      .preview-caption {
+        margin-top: 9px;
+        font-size: 9.5px;
+        font-weight: 600;
+        color: #4b5058;
+        text-align: center;
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+      }
+
+      /* --- VIEW 2: COVER FLOW --- */
+      .coverflow-view {
+        flex-direction: column;
+        perspective: 550px;
+        background: linear-gradient(
+          to bottom,
+          #ffffff 0%,
+          #ffffff 68%,
+          #e4e6ea 100%
+        );
+      }
+
+      .flow-stage {
+        position: relative;
+        width: 100%;
+        height: 122px;
+        margin-top: 8px;
+        transform-style: preserve-3d;
+      }
+
+      .album-card {
+        position: absolute;
+        width: 96px;
+        height: 96px;
+        left: 50%;
+        margin-left: -48px;
+        transition:
+          transform 0.28s cubic-bezier(0.2, 0.8, 0.25, 1),
+          opacity 0.28s;
+        transform-style: preserve-3d;
+        cursor: pointer;
+        -webkit-box-reflect: below 2px
+          linear-gradient(transparent 58%, rgba(0, 0, 0, 0.32));
+      }
+
+      .album-card img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+        display: block;
+        background: #111;
+      }
+
+      .flow-meta {
+        text-align: center;
+        padding: 0 14px;
+        margin-top: 4px;
+        z-index: 15;
+      }
+
+      .flow-title {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #111;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .flow-sub {
+        font-size: 10px;
+        color: #555;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .empty-flow {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        color: #666;
+        text-align: center;
+        padding: 16px;
+      }
+
+      /* --- VIEW 3: NOW PLAYING --- */
+      .nowplaying-view {
+        flex-direction: column;
+        padding: 8px 11px 6px;
+        background: linear-gradient(to bottom, #ffffff 0%, #f5f7fa 100%);
+        justify-content: space-between;
+      }
+
+      .np-top {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        height: 116px;
+      }
+
+      .np-art-frame {
+        width: 96px;
+        height: 96px;
+        flex-shrink: 0;
+        position: relative;
+        background: #111;
+        border-radius: 3px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+
+      .np-art-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .np-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        height: 100%;
+      }
+
+      .np-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 2px;
+      }
+
+      .np-count {
+        font-size: 9px;
+        color: #666;
+        font-weight: 700;
+      }
+
+      .np-modes {
+        display: flex;
+        gap: 3px;
+      }
+
+      .np-mode-pill {
+        font-size: 8px;
+        font-weight: 700;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: linear-gradient(to bottom, #f4f6f9, #d8dde6);
+        color: #3a404a;
+        cursor: pointer;
+        border: 1px solid #b5bcc7;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        transition: all 0.12s ease;
+      }
+      .np-mode-pill svg {
+        width: 9px;
+        height: 9px;
+        fill: currentColor;
+        flex-shrink: 0;
+      }
+
+      .np-mode-pill.active {
+        background: linear-gradient(to bottom, #5ca9f8, #1d68d2);
+        border-color: #1450a3;
+        color: #fff;
+      }
+
+      .np-mode-pill.focused {
+        border-color: #111;
+        box-shadow: 0 0 0 1px rgba(31, 110, 212, 0.45);
+      }
+
+      .np-title {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #111;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .np-artist {
+        font-size: 10px;
+        color: #444;
+        margin-top: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .np-source {
+        font-size: 8.5px;
+        color: #777;
+        margin-top: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #visualizer {
+        width: 100%;
+        height: 18px;
+        margin-top: 5px;
+        display: block;
+        cursor: pointer;
+      }
+
+      .np-bottom {
+        height: 30px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+      }
+
+      .scrubber-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 9.5px;
+        font-weight: 700;
+        color: #444;
+      }
+
+      .scrubber-track {
+        flex: 1;
+        height: 9px;
+        background: linear-gradient(
+          to bottom,
+          #c4c8cf 0%,
+          #e4e7ec 50%,
+          #f3f5f8 100%
+        );
+        border: 1px solid #9ba1ab;
+        border-radius: 5px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+      }
+
+      .scrubber-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(
+          to bottom,
+          #7ec2ff 0%,
+          #2d82ea 50%,
+          #1962c4 100%
+        );
+      }
+
+      .scrubber-diamond {
+        position: absolute;
+        top: 50%;
+        left: 0%;
+        width: 7px;
+        height: 7px;
+        background: #fff;
+        border: 1px solid #1b5ec0;
+        transform: translate(-50%, -50%) rotate(45deg);
+        display: none;
+      }
+
+      .np-bottom.seek-mode .scrubber-diamond {
+        display: block;
+        background: #3aa0ff;
+      }
+
+      .volume-row {
+        position: absolute;
+        inset: 0;
+        background: #f5f7fa;
+        display: none;
+        align-items: center;
+        gap: 6px;
+      }
+      .volume-row.active {
+        display: flex;
+      }
+      .vol-svg-icon {
+        width: 13px;
+        height: 13px;
+        fill: #555b65;
+        flex-shrink: 0;
+      }
+
+      .np-hint {
+        font-size: 8.5px;
+        color: #888;
+        text-align: center;
+        margin-top: 3px;
+      }
+
+      /* --- YouTube Bulk & Playlist Input Modal --- */
+      .yt-modal {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 18, 24, 0.86);
+        z-index: 80;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+      }
+      .yt-modal.active {
+        display: flex;
+      }
+      .yt-modal-box {
+        width: 100%;
+        background: linear-gradient(to bottom, #f6f7f9, #dfe3ea);
+        border: 1px solid #8c939e;
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65);
+      }
+      .yt-modal-header {
+        background: linear-gradient(
+          to bottom,
+          #63b0fa 0%,
+          #2475e2 50%,
+          #195ec2 100%
+        );
+        color: #fff;
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 4px 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.3);
+      }
+      .yt-detect-badge {
+        font-size: 8.5px;
+        background: rgba(0, 0, 0, 0.28);
+        padding: 1px 5px;
+        border-radius: 8px;
+        font-weight: 600;
+      }
+      .yt-modal-body {
+        padding: 7px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .yt-modal-body textarea {
+        width: 100%;
+        height: 74px;
+        padding: 5px 6px;
+        font-size: 9.5px;
+        font-family: "Lucida Grande", monospace, sans-serif;
+        border: 1px solid #8d94a0;
+        border-radius: 3px;
+        resize: none;
+        background: #ffffff;
+        color: #111;
+        line-height: 1.35;
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .yt-modal-sub {
+        font-size: 8px;
+        color: #4f5661;
+        line-height: 1.2;
+      }
+      .yt-modal-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .yt-btn {
+        flex: 1;
+        padding: 5px;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid #7f8691;
+      }
+      .yt-btn-add {
+        background: linear-gradient(
+          to bottom,
+          #5ca9f8 0%,
+          #2272df 50%,
+          #195ec2 100%
+        );
+        border-color: #114796;
+        color: #fff;
+        text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.3);
+      }
+      .yt-btn-add:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      .yt-btn-cancel {
+        background: linear-gradient(to bottom, #ffffff 0%, #e1e4ea 100%);
+        color: #333;
+      }
+
+      /* --- CLICK WHEEL --- */
+      .wheel-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        perspective: 600px;
+      }
+
+      .wheel {
+        width: 196px;
+        height: 196px;
+        background: #f1f2f5;
+        border-radius: 50%;
+        position: relative;
+        box-shadow:
+          8px 8px 16px rgba(160, 165, 175, 0.55),
+          -8px -8px 16px rgba(255, 255, 255, 0.95),
+          inset 1px 1px 2px rgba(255, 255, 255, 0.9),
+          inset -1px -1px 2px rgba(0, 0, 0, 0.08);
+        cursor: pointer;
+        touch-action: none;
+        transform-style: preserve-3d;
+        transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.25, 1);
+      }
+
+      /* Physical Wheel Tilts */
+      .wheel.tilt-up {
+        transform: rotateX(5deg) scale(0.99);
+      }
+      .wheel.tilt-down {
+        transform: rotateX(-5deg) scale(0.99);
+      }
+      .wheel.tilt-left {
+        transform: rotateY(-5deg) scale(0.99);
+      }
+      .wheel.tilt-right {
+        transform: rotateY(5deg) scale(0.99);
+      }
+
+      .wheel-btn {
+        position: absolute;
+        color: #878e99;
+        font-weight: 700;
+        font-size: 10.5px;
+        letter-spacing: 0.6px;
+        background: transparent;
+        border: none;
+        outline: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+      }
+      .wheel-btn svg {
+        fill: currentColor;
+        display: block;
+      }
+
+      .btn-menu {
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .btn-prev {
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      .btn-next {
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      .btn-play {
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .center-btn {
+        position: absolute;
+        width: 68px;
+        height: 68px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: linear-gradient(145deg, #e6e8ec 0%, #d8dae0 100%);
+        box-shadow:
+          3px 3px 7px rgba(160, 165, 175, 0.45),
+          -3px -3px 7px rgba(255, 255, 255, 0.9),
+          inset 1px 1px 1px rgba(255, 255, 255, 0.8),
+          inset -1px -1px 2px rgba(0, 0, 0, 0.12);
+        cursor: pointer;
+        transition:
+          transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.2),
+          box-shadow 0.1s ease;
+      }
+
+      .center-btn:active,
+      .center-btn.pressed {
+        transform: translate(-50%, -50%) scale(0.92);
+        box-shadow:
+          inset 3px 3px 6px rgba(140, 145, 155, 0.6),
+          inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+      }
+
+      #file-input {
+        display: none;
+      }
+      #yt-player-container {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        top: -9999px;
+        left: -9999px;
+        opacity: 0.01;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ipod-scaler">
+      <div class="ipod">
+        <div class="screen-bezel">
+          <div class="screen" id="screen">
+            <!-- Boot Screen with Authentic 2000s Chrome Apple Vector Logo -->
+            <div class="boot-screen" id="boot-screen">
+              <img
+                class="boot-logo-svg"
+                src="Apple-Logo-Png-Download-768x950.png"
+                alt="Boot Logo"
+                style="object-fit: contain"
+              />
+            </div>
+
+            <!-- Status Bar -->
+            <div class="status-bar">
+              <span class="status-title" id="status-title">iPod</span>
+              <div class="status-icons">
+                <span class="play-state-icon" id="play-state"></span>
+                <div class="battery"><div class="battery-level"></div></div>
+              </div>
+            </div>
+
+            <!-- Views Container -->
+            <div class="screen-body">
+              <!-- View 1: Split Menu -->
+              <div class="view split-menu active" id="view-menu">
+                <div class="menu-list" id="menu-list"></div>
+                <div class="preview-pane" id="preview-pane"></div>
+              </div>
+
+              <!-- View 2: Cover Flow -->
+              <div class="view coverflow-view" id="view-coverflow">
+                <div class="flow-stage" id="flow-stage"></div>
+                <div class="flow-meta" id="flow-meta">
+                  <div class="flow-title" id="flow-title"></div>
+                  <div class="flow-sub" id="flow-sub"></div>
+                </div>
+                <div class="empty-flow" id="empty-flow" style="display: none">
+                  <div>No Music Found</div>
+                  <div style="font-size: 9.5px; color: #888; margin-top: 4px">
+                    Press MENU and add songs
+                  </div>
+                </div>
+              </div>
+
+              <!-- View 3: Now Playing -->
+              <div class="view nowplaying-view" id="view-nowplaying">
+                <div class="np-top">
+                  <div class="np-art-frame">
+                    <img src="" alt="" class="np-art-img" id="np-art-img" />
+                  </div>
+                  <div class="np-info">
+                    <div class="np-header-row">
+                      <div class="np-count" id="np-count">0 of 0</div>
+                      <div class="np-modes">
+                        <span
+                          class="np-mode-pill"
+                          id="pill-order"
+                          title="Toggle In Order / Shuffle"
+                        ></span>
+                        <span
+                          class="np-mode-pill"
+                          id="pill-repeat"
+                          title="Cycle Loop: Off / All / One"
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="np-title" id="np-title">Not Playing</div>
+                    <div class="np-artist" id="np-artist">—</div>
+                    <div class="np-source" id="np-source"></div>
+                    <canvas
+                      id="visualizer"
+                      width="130"
+                      height="18"
+                      title="Click to toggle Live Tab Audio Capture"
+                    ></canvas>
+                  </div>
+                </div>
+
+                <div class="np-bottom" id="np-bottom">
+                  <div class="scrubber-row">
+                    <span id="time-elapsed">0:00</span>
+                    <div class="scrubber-track" id="scrubber-track">
+                      <div class="scrubber-fill" id="scrubber-fill"></div>
+                      <div class="scrubber-diamond" id="scrubber-diamond"></div>
+                    </div>
+                    <span id="time-remaining">-0:00</span>
+                  </div>
+                  <div class="volume-row" id="volume-row">
+                    <svg class="vol-svg-icon" viewBox="0 0 16 16">
+                      <path d="M2 5.5h3l4-3.5v12l-4-3.5H2z" />
+                    </svg>
+                    <div class="scrubber-track">
+                      <div
+                        class="scrubber-fill"
+                        id="volume-fill"
+                        style="width: 80%"
+                      ></div>
+                    </div>
+                    <svg class="vol-svg-icon" viewBox="0 0 16 16">
+                      <path d="M1.5 5.5h2.8l3.7-3.5v12l-3.7-3.5H1.5z" />
+                      <path
+                        d="M10.2 4.8c1.1 1.1 1.1 5.3 0 6.4M12.3 2.8c2.2 2.4 2.2 8 0 10.4"
+                        stroke="#555b65"
+                        stroke-width="1.4"
+                        fill="none"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </div>
+                  <div class="np-hint" id="np-hint">
+                    Wheel: Volume • Center: Mode
+                  </div>
+                </div>
+              </div>
+
+              <!-- YouTube Bulk & Playlist Prompt Modal -->
+              <div class="yt-modal" id="yt-modal">
+                <div class="yt-modal-box">
+                  <div class="yt-modal-header">
+                    <span>Add YouTube Links / Playlist</span>
+                    <span class="yt-detect-badge" id="yt-detect-badge"
+                      >0 Links</span
+                    >
+                  </div>
+                  <div class="yt-modal-body">
+                    <textarea
+                      id="yt-url"
+                      placeholder="Paste 1 or more YouTube links (1 per line, comma, or space) OR a YouTube Playlist link (?list=PL...)"
+                    ></textarea>
+                    <div class="yt-modal-sub" id="yt-modal-sub">
+                      Supports bulk video URLs, Shorts, & public Playlists
+                    </div>
+                    <div class="yt-modal-actions">
+                      <button class="yt-btn yt-btn-cancel" id="yt-cancel">
+                        Cancel
+                      </button>
+                      <button class="yt-btn yt-btn-add" id="yt-add">
+                        Queue All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Click Wheel with Authentic 2000s Vector Transport Icons -->
+        <div class="wheel-container">
+          <div class="wheel" id="wheel">
+            <div class="wheel-btn btn-menu" id="btn-menu">MENU</div>
+            <div class="wheel-btn btn-prev" id="btn-prev" aria-label="Previous">
+              <svg width="20" height="10" viewBox="0 0 22 10">
+                <rect x="0" y="1" width="2.2" height="8" />
+                <polygon points="11,1 3,5 11,9" />
+                <polygon points="19,1 11,5 19,9" />
+              </svg>
+            </div>
+            <div class="wheel-btn btn-next" id="btn-next" aria-label="Next">
+              <svg width="20" height="10" viewBox="0 0 22 10">
+                <polygon points="3,1 11,5 3,9" />
+                <polygon points="11,1 19,5 11,9" />
+                <rect x="19.8" y="1" width="2.2" height="8" />
+              </svg>
+            </div>
+            <div
+              class="wheel-btn btn-play"
+              id="btn-play"
+              aria-label="Play Pause"
+            >
+              <svg width="20" height="10" viewBox="0 0 22 10">
+                <polygon points="2,1 10,5 2,9" />
+                <rect x="13" y="1" width="2.6" height="8" />
+                <rect x="17.4" y="1" width="2.6" height="8" />
+              </svg>
+            </div>
+            <div class="center-btn" id="btn-center"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <audio id="audio" crossorigin="anonymous"></audio>
+    <audio id="shadow-audio" crossorigin="anonymous"></audio>
+    <div id="yt-player-container"><div id="yt-player"></div></div>
+    <input type="file" id="file-input" multiple accept="audio/*" />
+
+    <script>
+      // --- AUTHENTIC 2000s APPLE AQUA / iPOD OS 6th-GEN SKEUOMORPHIC SVG ICON LIBRARY ---
+      const AQUA_ICONS = {
+        // Glossy iTunes 7 / iPod 6G Aqua Blue Eighth Notes
+        music: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="aqNote" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#76c4ff"/>
+            <stop offset="50%" stop-color="#2277e6"/>
+            <stop offset="100%" stop-color="#1149a6"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#aqNote)" stroke="#0d3c8c" stroke-width="1.5" d="M23 14v27.2c-2.1-1.3-4.9-1.5-7.7-.3-4.3 1.8-6.5 6.1-4.9 9.6 1.6 3.5 6.4 4.9 10.7 3.1 3.6-1.5 5.8-4.9 5.6-8.1V23.5l21-4.8v17.5c-2.1-1.3-4.9-1.5-7.7-.3-4.3 1.8-6.5 6.1-4.9 9.6 1.6 3.5 6.4 4.9 10.7 3.1 3.6-1.5 5.8-4.9 5.6-8.1V9.5L23 14z"/>
+        <path fill="rgba(255,255,255,0.55)" d="M24.5 15.2l25.5-4.3v3.5l-25.5 4.5z"/>
+      </svg>`,
+
+        // 2000s Iridescent Optical CD/DVD Disc
+        coverflow: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="cdBase" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f7f9fc"/>
+            <stop offset="35%" stop-color="#c6d0df"/>
+            <stop offset="50%" stop-color="#96a5bc"/>
+            <stop offset="70%" stop-color="#dce3ed"/>
+            <stop offset="100%" stop-color="#a2b0c4"/>
+          </linearGradient>
+          <linearGradient id="cdIridescent" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="rgba(80,200,255,0)"/>
+            <stop offset="40%" stop-color="rgba(80,200,255,0.55)"/>
+            <stop offset="52%" stop-color="rgba(180,100,255,0.45)"/>
+            <stop offset="65%" stop-color="rgba(100,255,180,0.4)"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+          </linearGradient>
+        </defs>
+        <circle cx="32" cy="32" r="26" fill="url(#cdBase)" stroke="#6f7c91" stroke-width="1.5"/>
+        <path fill="url(#cdIridescent)" d="M32 32 L12 15 A26 26 0 0 1 49 12 Z"/>
+        <path fill="url(#cdIridescent)" d="M32 32 L52 49 A26 26 0 0 1 15 52 Z"/>
+        <circle cx="32" cy="32" r="9" fill="#d9dfe8" stroke="#7d899c" stroke-width="1.2"/>
+        <circle cx="32" cy="32" r="4" fill="#ffffff" stroke="#6f7c91" stroke-width="1"/>
+      </svg>`,
+
+        // Glossy Aqua Blue Now Playing Badge
+        nowplaying: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="npOrb" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#7ec8ff"/>
+            <stop offset="50%" stop-color="#1f73e2"/>
+            <stop offset="100%" stop-color="#0f479e"/>
+          </linearGradient>
+        </defs>
+        <circle cx="32" cy="32" r="25" fill="url(#npOrb)" stroke="#0b3880" stroke-width="1.5"/>
+        <ellipse cx="32" cy="19" rx="17" ry="9" fill="rgba(255,255,255,0.45)"/>
+        <polygon points="26,20 45,32 26,44" fill="#ffffff" stroke="#0c3c88" stroke-width="1" stroke-linejoin="round"/>
+      </svg>`,
+
+        // 2000s iPod OS Intertwined Aqua Shuffle Arrows
+        shuffle: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="shufGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#69b8ff"/>
+            <stop offset="100%" stop-color="#165ec4"/>
+          </linearGradient>
+        </defs>
+        <path d="M10 22h9c8 0 12 20 21 20h7" fill="none" stroke="url(#shufGrad)" stroke-width="5.5" stroke-linecap="round"/>
+        <polygon points="44,34 56,42 44,50" fill="url(#shufGrad)"/>
+        <path d="M10 42h9c8 0 12-20 21-20h7" fill="none" stroke="url(#shufGrad)" stroke-width="5.5" stroke-linecap="round"/>
+        <polygon points="44,14 56,22 44,30" fill="url(#shufGrad)"/>
+      </svg>`,
+
+        // 2000s iPod OS Loop / Repeat Arrows
+        repeat: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="repGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#69b8ff"/>
+            <stop offset="100%" stop-color="#165ec4"/>
+          </linearGradient>
+        </defs>
+        <path d="M16 30v-4c0-5.5 4.5-10 10-10h16" fill="none" stroke="url(#repGrad)" stroke-width="5.5" stroke-linecap="round"/>
+        <polygon points="40,9 52,16 40,23" fill="url(#repGrad)"/>
+        <path d="M48 34v4c0 5.5-4.5 10-10 10H22" fill="none" stroke="url(#repGrad)" stroke-width="5.5" stroke-linecap="round"/>
+        <polygon points="24,55 12,48 24,41" fill="url(#repGrad)"/>
+      </svg>`,
+
+        // Mac OS X Tiger/Leopard Glossy Aqua Folder
+        folder: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="fldBack" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#5da8f0"/>
+            <stop offset="100%" stop-color="#2268bc"/>
+          </linearGradient>
+          <linearGradient id="fldFront" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#9ad4ff"/>
+            <stop offset="45%" stop-color="#4ea2f5"/>
+            <stop offset="100%" stop-color="#1b67c7"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#fldBack)" stroke="#164f9c" stroke-width="1.2" d="M8 16c0-2.2 1.8-4 4-4h13l4 5h23c2.2 0 4 1.8 4 4v27c0 2.2-1.8 4-4 4H12c-2.2 0-4-1.8-4-4V16z"/>
+        <rect x="6" y="23" width="52" height="29" rx="4" fill="url(#fldFront)" stroke="#134c99" stroke-width="1.2"/>
+        <rect x="8" y="24.5" width="48" height="10" rx="3" fill="rgba(255,255,255,0.38)"/>
+      </svg>`,
+
+        // Classic 2007 YouTube Retro Broadcast Tube / Glossy Red Badge
+        youtube: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="ytRed" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ff6b6b"/>
+            <stop offset="48%" stop-color="#d81e1e"/>
+            <stop offset="100%" stop-color="#8f0b0b"/>
+          </linearGradient>
+        </defs>
+        <rect x="7" y="14" width="50" height="36" rx="10" fill="url(#ytRed)" stroke="#6e0707" stroke-width="1.5"/>
+        <path fill="rgba(255,255,255,0.42)" d="M15 16h34c3.8 0 6.5 2.5 6.5 6.5 0 2-8 4.5-23.5 4.5S8.5 24.5 8.5 22.5c0-4 2.7-6.5 6.5-6.5z"/>
+        <polygon points="26,23 42,32 26,41" fill="#ffffff" stroke="#700909" stroke-width="1" stroke-linejoin="round"/>
+      </svg>`,
+
+        // Brushed Steel Mac OS X System Preferences Gear
+        settings: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="gearMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f2f4f7"/>
+            <stop offset="45%" stop-color="#b4bcc8"/>
+            <stop offset="55%" stop-color="#8791a0"/>
+            <stop offset="100%" stop-color="#d2d7e0"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#gearMetal)" stroke="#535b68" stroke-width="1.5" stroke-linejoin="round" d="M28.5 8h7l1.2 6.2c2 .6 3.8 1.4 5.4 2.5l5.7-3l4.9 4.9l-3 5.7c1.1 1.6 1.9 3.4 2.5 5.4L58.4 31v7l-6.2 1.2c-.6 2-1.4 3.8-2.5 5.4l3 5.7l-4.9 4.9l-5.7-3c-1.6 1.1-3.4 1.9-5.4 2.5L35.5 61h-7l-1.2-6.2c-2-.6-3.8-1.4-5.4-2.5l-5.7 3l-4.9-4.9l3-5.7c-1.1-1.6-1.9-3.4-2.5-5.4L5.6 38v-7l6.2-1.2c.6-2 1.4-3.8 2.5-5.4l-3-5.7l4.9-4.9l5.7 3c1.6-1.1 3.4-1.9 5.4-2.5L28.5 8z"/>
+        <circle cx="32" cy="34.5" r="9.5" fill="#e1e5ec" stroke="#535b68" stroke-width="1.5"/>
+        <circle cx="32" cy="34.5" r="4.5" fill="#4a525e"/>
+      </svg>`,
+
+        // 2000s Glossy Equalizer / Spectrum Analyzer Bars
+        visualizer: `
+      <svg viewBox="0 0 64 64">
+        <rect x="10" y="34" width="8" height="18" rx="1.5" fill="#1e6ee0" stroke="#0f4799" stroke-width="1"/>
+        <rect x="21" y="18" width="8" height="34" rx="1.5" fill="#32b846" stroke="#1d7a2b" stroke-width="1"/>
+        <rect x="32" y="26" width="8" height="26" rx="1.5" fill="#f5a623" stroke="#b57209" stroke-width="1"/>
+        <rect x="43" y="12" width="8" height="40" rx="1.5" fill="#e53935" stroke="#991b18" stroke-width="1"/>
+      </svg>`,
+
+        // Brushed Chrome Studio Microphone
+        mic: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="micSteel" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#9ca5b3"/>
+            <stop offset="45%" stop-color="#f5f7fa"/>
+            <stop offset="100%" stop-color="#7c8594"/>
+          </linearGradient>
+        </defs>
+        <rect x="23" y="10" width="18" height="28" rx="9" fill="url(#micSteel)" stroke="#4c535e" stroke-width="1.5"/>
+        <line x1="23" y1="19" x2="41" y2="19" stroke="#5a6270" stroke-width="1.2"/>
+        <line x1="23" y1="25" x2="41" y2="25" stroke="#5a6270" stroke-width="1.2"/>
+        <path d="M17 26c0 8.3 6.7 15 15 15s15-6.7 15-15" fill="none" stroke="#4c535e" stroke-width="3" stroke-linecap="round"/>
+        <line x1="32" y1="41" x2="32" y2="52" stroke="#4c535e" stroke-width="3.5"/>
+        <rect x="22" y="51" width="20" height="4" rx="2" fill="#4c535e"/>
+      </svg>`,
+
+        // Mac OS X Glossy Metallic Speaker Cone
+        sound: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="spkCone" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#eef1f6"/>
+            <stop offset="50%" stop-color="#9ba4b2"/>
+            <stop offset="100%" stop-color="#616a78"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#spkCone)" stroke="#3e4550" stroke-width="1.5" stroke-linejoin="round" d="M11 25h9l13-11v36l-13-11h-9z"/>
+        <path d="M40 22c4 4.5 4 15.5 0 20M46 16c7 7.5 7 24.5 0 32" fill="none" stroke="#1e6ee0" stroke-width="3.2" stroke-linecap="round"/>
+      </svg>`,
+
+        // Aqua Blue Glossy Info Badge
+        info: `
+      <svg viewBox="0 0 64 64">
+        <defs>
+          <linearGradient id="infoOrb" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#7ec8ff"/>
+            <stop offset="50%" stop-color="#1f73e2"/>
+            <stop offset="100%" stop-color="#0f479e"/>
+          </linearGradient>
+        </defs>
+        <circle cx="32" cy="32" r="24" fill="url(#infoOrb)" stroke="#0b3880" stroke-width="1.5"/>
+        <ellipse cx="32" cy="19" rx="16" ry="8" fill="rgba(255,255,255,0.42)"/>
+        <circle cx="32" cy="20" r="3" fill="#ffffff"/>
+        <path d="M28 28h6v16h2.5v3h-10v-3H29V31h-1v-3z" fill="#ffffff"/>
+      </svg>`,
+
+        // Songs Tracklist Sheet with Aqua Note
+        songs: `
+      <svg viewBox="0 0 64 64">
+        <rect x="13" y="9" width="38" height="46" rx="3" fill="#ffffff" stroke="#858e9c" stroke-width="1.5"/>
+        <line x1="19" y1="18" x2="45" y2="18" stroke="#c5ccd6" stroke-width="2"/>
+        <line x1="19" y1="25" x2="45" y2="25" stroke="#c5ccd6" stroke-width="2"/>
+        <line x1="19" y1="32" x2="35" y2="32" stroke="#c5ccd6" stroke-width="2"/>
+        <path fill="#1e6ee0" d="M35 24v16.5c-1.5-.8-3.4-.9-5.2-.1-2.8 1.2-4.2 4-3.1 6.2 1 2.2 4.1 3.1 6.9 1.9 2.3-1 3.7-3.1 3.6-5.2V30l10-2.3V22L35 24z"/>
+      </svg>`,
+      };
+
+      // Small Inline Status / Menu / Badge SVGs
+      const INLINE_SVGS = {
+        chevron: `<svg viewBox="0 0 10 10"><path d="M3 1.5L7 5L3 8.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+        speaker: `<svg viewBox="0 0 12 12"><path d="M1 4.2h2.2L6.2 1.5v9L3.2 7.8H1z"/><path d="M8 3.6c1 1.1 1 3.7 0 4.8M9.8 2c2 2.2 2 5.8 0 8" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>`,
+        pause: `<svg viewBox="0 0 10 10"><rect x="2" y="1.5" width="2.2" height="7"/><rect x="5.8" y="1.5" width="2.2" height="7"/></svg>`,
+        statusPlay: `<svg viewBox="0 0 10 10"><defs><linearGradient id="stPlay" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#5ca9f8"/><stop offset="100%" stop-color="#1558bc"/></linearGradient></defs><polygon points="2,1 9,5 2,9" fill="url(#stPlay)"/></svg>`,
+        statusPause: `<svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="2.6" height="7" fill="#1d68d2"/><rect x="5.8" y="1.5" width="2.6" height="7" fill="#1d68d2"/></svg>`,
+        orderArrow: `<svg viewBox="0 0 12 12"><path d="M1.5 6h7M6.5 3l3 3-3 3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+        shuffleMini: `<svg viewBox="0 0 12 12"><path d="M1 3.5h2c2 0 3 5 5 5h2.5M1 8.5h2c2 0 3-5 5-5h2.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><polygon points="9,2 11.5,3.5 9,5"/><polygon points="9,7 11.5,8.5 9,10"/></svg>`,
+        repeatMini: `<svg viewBox="0 0 12 12"><path d="M2.5 5.5V4.2c0-1.2 1-2.2 2.2-2.2h4M9.5 6.5v1.3c0 1.2-1 2.2-2.2 2.2h-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><polygon points="8,0.6 10.6,2 8,3.4"/><polygon points="4,8.6 1.4,10 4,11.4"/></svg>`,
+      };
+
+      // --- STATE ---
+      let playlist = [];
+      let currentIndex = -1;
+      let isPlaying = false;
+      let volume = 0.8;
+
+      const settings = {
+        visualizer: true,
+        clickSound: true,
+        playOrder: "in-order", // 'in-order' | 'shuffle'
+        repeat: "off", // 'off' | 'all' | 'one'
+      };
+
+      let navStack = [{ view: "menu", menuId: "main", selectedIndex: 0 }];
+      let flowIndex = 0;
+      let npWheelMode = "volume"; // 'volume' -> 'seek' -> 'order' -> 'repeat'
+      let volumeTimer = null;
+      let toastTimer = null;
+
+      // Web Audio Context & Multi-Tier Sync Nodes
+      let audioContext = null;
+      let analyser = null;
+      let sourceNode = null;
+      let shadowSourceNode = null;
+      let silentGainNode = null;
+      let tabCaptureStream = null;
+      let tabCaptureNode = null;
+      let dataArray = null;
+
+      // YouTube API & High-Precision Clock Sync
+      let ytPlayer = null;
+      let isYtReady = false;
+      let isYtBuffering = false;
+      let pendingYtId = null;
+      let lastRawYtTime = 0;
+      let lastYtSyncPerf = performance.now();
+      let isShadowStreamActive = false;
+
+      // Visualizer Physics State (16 Bars)
+      const BAR_COUNT = 16;
+      const smoothBars = new Float32Array(BAR_COUNT);
+      const peakBars = new Float32Array(BAR_COUNT);
+      const peakHoldFrames = new Uint8Array(BAR_COUNT);
+
+      // DOM Elements
+      const bootScreen = document.getElementById("boot-screen");
+      const statusTitle = document.getElementById("status-title");
+      const playStateIcon = document.getElementById("play-state");
+
+      const viewMenu = document.getElementById("view-menu");
+      const menuListEl = document.getElementById("menu-list");
+      const previewPaneEl = document.getElementById("preview-pane");
+
+      const viewCoverFlow = document.getElementById("view-coverflow");
+      const flowStage = document.getElementById("flow-stage");
+      const flowTitle = document.getElementById("flow-title");
+      const flowSub = document.getElementById("flow-sub");
+      const emptyFlow = document.getElementById("empty-flow");
+
+      const viewNowPlaying = document.getElementById("view-nowplaying");
+      const npArtImg = document.getElementById("np-art-img");
+      const npCount = document.getElementById("np-count");
+      const pillOrder = document.getElementById("pill-order");
+      const pillRepeat = document.getElementById("pill-repeat");
+      const npTitle = document.getElementById("np-title");
+      const npArtist = document.getElementById("np-artist");
+      const npSource = document.getElementById("np-source");
+      const npBottom = document.getElementById("np-bottom");
+      const timeElapsed = document.getElementById("time-elapsed");
+      const timeRemaining = document.getElementById("time-remaining");
+      const scrubberFill = document.getElementById("scrubber-fill");
+      const scrubberDiamond = document.getElementById("scrubber-diamond");
+      const volumeRow = document.getElementById("volume-row");
+      const volumeFill = document.getElementById("volume-fill");
+      const npHint = document.getElementById("np-hint");
+
+      const ytModal = document.getElementById("yt-modal");
+      const ytUrlInput = document.getElementById("yt-url");
+      const ytDetectBadge = document.getElementById("yt-detect-badge");
+      const ytModalSub = document.getElementById("yt-modal-sub");
+      const ytAddBtn = document.getElementById("yt-add");
+      const ytCancelBtn = document.getElementById("yt-cancel");
+
+      const audio = document.getElementById("audio");
+      const shadowAudio = document.getElementById("shadow-audio");
+      const fileInput = document.getElementById("file-input");
+      const wheel = document.getElementById("wheel");
+      const btnCenter = document.getElementById("btn-center");
+      const btnPlay = document.getElementById("btn-play");
+      const btnPrev = document.getElementById("btn-prev");
+      const btnNext = document.getElementById("btn-next");
+      const btnMenu = document.getElementById("btn-menu");
+      const canvas = document.getElementById("visualizer");
+      const ctx = canvas.getContext("2d");
+
+      // Boot sequence
+      setTimeout(() => bootScreen.classList.add("hidden"), 1500);
+      bootScreen.addEventListener("click", () =>
+        bootScreen.classList.add("hidden"),
+      );
+
+      function setPlayStateIndicator(state) {
+        if (state === "playing") {
+          playStateIcon.innerHTML = INLINE_SVGS.statusPlay;
+          playStateIcon.style.display = "inline-flex";
+        } else if (state === "paused") {
+          playStateIcon.innerHTML = INLINE_SVGS.statusPause;
+          playStateIcon.style.display = "inline-flex";
+        } else {
+          playStateIcon.style.display = "none";
+        }
+      }
+
+      function showStatusToast(msg) {
+        clearTimeout(toastTimer);
+        statusTitle.textContent = msg;
+        toastTimer = setTimeout(() => {
+          renderCurrentView();
+        }, 2000);
+      }
+
+      // --- PLAYBACK MODE HELPERS ---
+      function togglePlayOrder() {
+        settings.playOrder =
+          settings.playOrder === "in-order" ? "shuffle" : "in-order";
+        updateNowPlayingUI();
+        if (currentNav().view === "menu") renderCurrentView();
+      }
+
+      function cycleRepeatMode(dir = 1) {
+        const modes = ["off", "all", "one"];
+        const idx = modes.indexOf(settings.repeat);
+        settings.repeat = modes[(idx + dir + modes.length) % modes.length];
+        updateNowPlayingUI();
+        if (currentNav().view === "menu") renderCurrentView();
+      }
+
+      function getOrderLabel() {
+        return settings.playOrder === "shuffle" ? "Shuffle" : "In Order";
+      }
+
+      function getRepeatLabel() {
+        if (settings.repeat === "one") return "Loop 1";
+        if (settings.repeat === "all") return "Loop All";
+        return "Off";
+      }
+
+      pillOrder.addEventListener("click", (e) => {
+        e.stopPropagation();
+        playClickSound();
+        togglePlayOrder();
+      });
+
+      pillRepeat.addEventListener("click", (e) => {
+        e.stopPropagation();
+        playClickSound();
+        cycleRepeatMode(1);
+      });
+
+      // --- DYNAMIC YOUTUBE LOADER ---
+      window.onYouTubeIframeAPIReady = function () {
+        ytPlayer = new YT.Player("yt-player", {
+          height: "200",
+          width: "200",
+          host: "https://www.youtube-nocookie.com",
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
+            enablejsapi: 1,
+            fs: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            rel: 0,
+          },
+          events: {
+            onReady: () => {
+              isYtReady = true;
+              ytPlayer.setVolume(volume * 100);
+              if (pendingYtId) {
+                ytPlayer.loadVideoById(pendingYtId);
+                ytPlayer.playVideo();
+                pendingYtId = null;
+              }
+            },
+            onStateChange: (e) => {
+              if (e.data === YT.PlayerState.PLAYING) {
+                isPlaying = true;
+                isYtBuffering = false;
+                lastRawYtTime = ytPlayer.getCurrentTime() || 0;
+                lastYtSyncPerf = performance.now();
+                setPlayStateIndicator("playing");
+                syncShadowAudioToYt(true);
+              } else if (e.data === YT.PlayerState.BUFFERING) {
+                isYtBuffering = true;
+                if (isShadowStreamActive) shadowAudio.pause();
+              } else if (e.data === YT.PlayerState.PAUSED) {
+                isPlaying = false;
+                isYtBuffering = false;
+                setPlayStateIndicator("paused");
+                if (isShadowStreamActive) shadowAudio.pause();
+              } else if (e.data === YT.PlayerState.ENDED) {
+                isYtBuffering = false;
+                if (isShadowStreamActive) shadowAudio.pause();
+                handleTrackEnded();
+              }
+            },
+          },
+        });
+      };
+
+      const ytScript = document.createElement("script");
+      ytScript.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(ytScript);
+
+      // --- AUDIO, FFT ANALYSER & HAPTIC SYNTHESIZER ---
+      function initAudio() {
+        if (!audioContext) {
+          audioContext = new (
+            window.AudioContext || window.webkitAudioContext
+          )();
+        }
+        if (audioContext.state === "suspended") {
+          audioContext.resume();
+        }
+        if (!analyser) {
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 128;
+          analyser.smoothingTimeConstant = 0.72;
+          dataArray = new Uint8Array(analyser.frequencyBinCount);
+        }
+        if (!sourceNode) {
+          try {
+            sourceNode = audioContext.createMediaElementSource(audio);
+            sourceNode.connect(analyser);
+            sourceNode.connect(audioContext.destination);
+          } catch (err) {}
+        }
+        if (!shadowSourceNode) {
+          try {
+            silentGainNode = audioContext.createGain();
+            silentGainNode.gain.value = 0;
+            shadowSourceNode =
+              audioContext.createMediaElementSource(shadowAudio);
+            shadowSourceNode.connect(analyser);
+            shadowSourceNode.connect(silentGainNode);
+            silentGainNode.connect(audioContext.destination);
+          } catch (err) {}
+        }
+      }
+
+      async function toggleTabAudioCapture() {
+        initAudio();
+        if (tabCaptureStream) {
+          tabCaptureStream.getTracks().forEach((t) => t.stop());
+          if (tabCaptureNode) tabCaptureNode.disconnect();
+          tabCaptureStream = null;
+          tabCaptureNode = null;
+          updateNowPlayingUI();
+          if (currentNav().view === "menu") renderCurrentView();
+          return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+            preferCurrentTab: true,
+          });
+          const audioTracks = stream.getAudioTracks();
+          if (audioTracks.length === 0) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          stream.getVideoTracks().forEach((t) => t.stop());
+          tabCaptureStream = stream;
+          tabCaptureNode = audioContext.createMediaStreamSource(stream);
+          tabCaptureNode.connect(analyser);
+          audioTracks[0].onended = () => {
+            tabCaptureStream = null;
+            if (tabCaptureNode) tabCaptureNode.disconnect();
+            tabCaptureNode = null;
+            updateNowPlayingUI();
+          };
+          updateNowPlayingUI();
+          if (currentNav().view === "menu") renderCurrentView();
+        } catch (e) {}
+      }
+
+      canvas.addEventListener("click", () => {
+        const track = playlist[currentIndex];
+        if (track && track.type === "youtube") {
+          playClickSound();
+          toggleTabAudioCapture();
+        }
+      });
+
+      function playClickSound() {
+        if (!settings.clickSound) return;
+        try {
+          initAudio();
+          const osc = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(1400, audioContext.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(
+            160,
+            audioContext.currentTime + 0.014,
+          );
+          gain.gain.setValueAtTime(0.18, audioContext.currentTime);
+          gain.gain.exponentialRampToValueAtTime(
+            0.001,
+            audioContext.currentTime + 0.014,
+          );
+          osc.connect(gain);
+          gain.connect(audioContext.destination);
+          osc.start();
+          osc.stop(audioContext.currentTime + 0.014);
+        } catch (e) {}
+      }
+
+      // --- YOUTUBE REAL-TIME AUDIO EXTRACTION & FAST SPECTRAL DNA ANALYZER ---
+      function getSmoothYtTime() {
+        if (
+          !ytPlayer ||
+          !isYtReady ||
+          typeof ytPlayer.getCurrentTime !== "function"
+        )
+          return 0;
+        const rawTime = ytPlayer.getCurrentTime() || 0;
+        const now = performance.now();
+        if (Math.abs(rawTime - lastRawYtTime) > 0.001) {
+          lastRawYtTime = rawTime;
+          lastYtSyncPerf = now;
+        }
+        if (!isPlaying || isYtBuffering) return rawTime;
+        const rate =
+          typeof ytPlayer.getPlaybackRate === "function"
+            ? ytPlayer.getPlaybackRate() || 1
+            : 1;
+        const elapsed = (now - lastYtSyncPerf) / 1000;
+        return rawTime + Math.min(0.35, Math.max(0, elapsed * rate));
+      }
+
+      function syncShadowAudioToYt(forcePlay = false) {
+        if (!isShadowStreamActive || !ytPlayer || !isYtReady) return;
+        const ytSec = ytPlayer.getCurrentTime() || 0;
+        if (Math.abs(shadowAudio.currentTime - ytSec) > 0.12) {
+          shadowAudio.currentTime = ytSec;
+        }
+        if (isPlaying && !isYtBuffering && (shadowAudio.paused || forcePlay)) {
+          shadowAudio.play().catch(() => {});
+        } else if (!isPlaying && !shadowAudio.paused) {
+          shadowAudio.pause();
+        }
+      }
+
+      async function attachDirectYoutubeAudioStream(track) {
+        isShadowStreamActive = false;
+        shadowAudio.pause();
+        shadowAudio.removeAttribute("src");
+
+        const pipedInstances = [
+          `https://pipedapi.kavin.rocks/streams/${track.ytId}`,
+          `https://api.piped.private.coffee/streams/${track.ytId}`,
+        ];
+
+        const fetchCandidate = async (endpoint) => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 2200);
+          try {
+            const res = await fetch(endpoint, { signal: controller.signal });
+            clearTimeout(timer);
+            if (!res.ok) throw new Error("Status " + res.status);
+            const data = await res.json();
+            const streams =
+              data && Array.isArray(data.audioStreams) ? data.audioStreams : [];
+            const best =
+              streams.find(
+                (s) => s.mimeType && s.mimeType.includes("audio/mp4"),
+              ) || streams[0];
+            if (!best || !best.url) throw new Error("No stream");
+            return best.url;
+          } catch (err) {
+            clearTimeout(timer);
+            throw err;
+          }
+        };
+
+        try {
+          const streamUrl = await Promise.any(
+            pipedInstances.map(fetchCandidate),
+          );
+          if (streamUrl && playlist[currentIndex] === track) {
+            shadowAudio.src = streamUrl;
+            shadowAudio.oncanplay = () => {
+              if (playlist[currentIndex] === track) {
+                isShadowStreamActive = true;
+                track.syncStatus = "Direct Stream FFT";
+                syncShadowAudioToYt(true);
+                updateNowPlayingUI();
+              }
+            };
+            shadowAudio.onerror = () => {
+              isShadowStreamActive = false;
+            };
+          }
+        } catch (e) {}
+      }
+
+      // Ultra-fast (< 3ms) single-pass Audio DNA & BPM extractor
+      async function analyzeTrackAudioDNA(track, rawTitle, rawAuthor) {
+        if (track.dnaAnalyzed) return;
+        track.dnaAnalyzed = true;
+        try {
+          const cleanTitle = rawTitle
+            .replace(/\(.*?\)|\[.*?\]/g, "")
+            .replace(
+              /official\s*(music\s*)?video|lyrics?|audio|hd|4k|hq|visualizer|feat\.?|ft\.?/gi,
+              "",
+            )
+            .replace(/[^\w\s-]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+          const query =
+            cleanTitle.length > 3
+              ? cleanTitle
+              : `${rawAuthor} ${rawTitle}`.slice(0, 60);
+          const searchRes = await fetch(
+            `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=1`,
+          );
+          const searchData = await searchRes.json();
+
+          if (
+            !searchData.results ||
+            !searchData.results[0] ||
+            !searchData.results[0].previewUrl
+          )
+            return;
+          const previewUrl = searchData.results[0].previewUrl;
+
+          initAudio();
+          const audioRes = await fetch(previewUrl);
+          const arrayBuffer = await audioRes.arrayBuffer();
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+          const channel = audioBuffer.getChannelData(0);
+          const sampleRate = audioBuffer.sampleRate;
+          const fps = 30;
+          const samplesPerFrame = Math.floor(sampleRate / fps);
+          const totalFrames = Math.min(
+            900,
+            Math.floor(channel.length / samplesPerFrame),
+          );
+          const frames = new Array(totalFrames);
+          const bassHistory = new Float32Array(totalFrames);
+
+          for (let f = 0; f < totalFrames; f++) {
+            const start = f * samplesPerFrame;
+            const step = Math.max(1, Math.floor(samplesPerFrame / 48));
+            let low = 0,
+              mid = 0,
+              high = 0,
+              prev = 0;
+            let lp = 0;
+
+            for (let s = 0; s < 48; s++) {
+              const sample = channel[start + s * step] || 0;
+              lp = lp * 0.82 + sample * 0.18;
+              const hp = sample - prev;
+              const bp = sample - lp;
+              prev = sample;
+
+              low += Math.abs(lp);
+              mid += Math.abs(bp);
+              high += Math.abs(hp);
+            }
+
+            low = Math.min(1, (low / 48) * 3.8);
+            mid = Math.min(1, (mid / 48) * 4.2);
+            high = Math.min(1, (high / 48) * 5.0);
+            bassHistory[f] = low;
+
+            const bandValues = new Uint8Array(BAR_COUNT);
+            for (let b = 0; b < BAR_COUNT; b++) {
+              const ratio = b / (BAR_COUNT - 1);
+              const shape = Math.sin(f * 0.35 + b * 0.65) * 0.12 + 0.88;
+              let energy;
+              if (ratio < 0.35) {
+                const t = ratio / 0.35;
+                energy = low * (1 - t) + mid * t;
+              } else {
+                const t = (ratio - 0.35) / 0.65;
+                energy = mid * (1 - t) + high * t;
+              }
+              bandValues[b] = Math.min(
+                255,
+                Math.round(Math.pow(energy * shape, 0.75) * 255),
+              );
+            }
+            frames[f] = bandValues;
+          }
+
+          let bestLag = 15;
+          let maxCorr = -1;
+          for (let lag = 11; lag <= 24; lag++) {
+            let corr = 0;
+            for (let i = 1; i < totalFrames - lag; i += 2) {
+              const onsetA = Math.max(0, bassHistory[i] - bassHistory[i - 1]);
+              const onsetB = Math.max(
+                0,
+                bassHistory[i + lag] - bassHistory[i + lag - 1],
+              );
+              corr += onsetA * onsetB;
+            }
+            if (corr > maxCorr) {
+              maxCorr = corr;
+              bestLag = lag;
+            }
+          }
+
+          track.detectedBpm = Math.round((60 * fps) / bestLag);
+          track.spectralFrames = frames;
+          track.spectralFps = fps;
+          if (!isShadowStreamActive) {
+            track.syncStatus = `Synced (${track.detectedBpm} BPM Audio DNA)`;
+            if (
+              playlist[currentIndex] === track &&
+              currentNav().view === "nowplaying"
+            ) {
+              updateNowPlayingUI();
+            }
+          }
+        } catch (e) {}
+      }
+
+      // --- REAL-TIME 60FPS MULTI-TIER VISUALIZER ---
+      function renderVisualizer() {
+        requestAnimationFrame(renderVisualizer);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!settings.visualizer) return;
+
+        const gap = 2;
+        const barWidth = (canvas.width - (BAR_COUNT - 1) * gap) / BAR_COUNT;
+        const currentTrack = playlist[currentIndex];
+        const isYtTrack = currentTrack && currentTrack.type === "youtube";
+        const activePlay = isPlaying && (!isYtTrack || !isYtBuffering);
+
+        let hasLiveFftSignal = false;
+        if (
+          analyser &&
+          activePlay &&
+          (!isYtTrack || tabCaptureStream || isShadowStreamActive)
+        ) {
+          analyser.getByteFrequencyData(dataArray);
+          for (let k = 0; k < 16; k++) {
+            if (dataArray[k] > 2) {
+              hasLiveFftSignal = true;
+              break;
+            }
+          }
+        }
+
+        const ytTime = isYtTrack && activePlay ? getSmoothYtTime() : 0;
+
+        for (let i = 0; i < BAR_COUNT; i++) {
+          let targetVal = 0;
+
+          if (activePlay) {
+            if (hasLiveFftSignal && dataArray) {
+              const binIndex = Math.floor(
+                Math.pow(i / BAR_COUNT, 1.35) * (dataArray.length * 0.65),
+              );
+              targetVal = (dataArray[binIndex] / 255) * Math.max(0.25, volume);
+            } else if (
+              isYtTrack &&
+              currentTrack.spectralFrames &&
+              currentTrack.spectralFrames.length > 0
+            ) {
+              const frames = currentTrack.spectralFrames;
+              const totalFrames = frames.length;
+              const exactFrame = ytTime * (currentTrack.spectralFps || 30);
+              const idxA = Math.floor(exactFrame) % totalFrames;
+              const idxB = (idxA + 1) % totalFrames;
+              const frac = exactFrame - Math.floor(exactFrame);
+
+              const rawBand =
+                (frames[idxA][i] * (1 - frac) + frames[idxB][i] * frac) / 255;
+              const bpm = currentTrack.detectedBpm || 120;
+              const beatPhase = ytTime * (bpm / 60) * Math.PI;
+              const transientBoost =
+                i < 3
+                  ? Math.pow(Math.max(0, Math.sin(beatPhase)), 4) * 0.18
+                  : Math.pow(
+                      Math.max(0, Math.cos(beatPhase * 2 + i * 0.3)),
+                      3,
+                    ) * 0.1;
+
+              targetVal = Math.min(
+                1,
+                (rawBand * 0.88 + transientBoost) * Math.max(0.25, volume),
+              );
+            } else if (isYtTrack) {
+              const seed = currentTrack.seed || 1;
+              const bpm = currentTrack.detectedBpm || 110 + (seed % 32);
+              const beat = ytTime * (bpm / 60);
+              const beatRad = beat * Math.PI;
+
+              const kickEnv =
+                Math.pow(Math.max(0, Math.sin(beatRad)), 6) * (1 - i * 0.15);
+              const snareEnv =
+                Math.pow(Math.max(0, Math.sin(beatRad - Math.PI / 2)), 8) *
+                Math.exp(-Math.pow((i - 6) / 3.5, 2));
+              const vocalWave =
+                Math.abs(
+                  Math.sin(ytTime * 5.2 + i * 0.55 + seed) *
+                    Math.cos(ytTime * 3.1 - i * 0.35),
+                ) * Math.exp(-Math.pow((i - 7) / 5, 2));
+              const hatEnv =
+                i >= 10
+                  ? Math.pow(Math.abs(Math.sin(beatRad * 4 + i * 1.1)), 3) *
+                    0.65
+                  : 0;
+
+              let combined = 0;
+              if (i < 4) {
+                combined = kickEnv * 0.78 + vocalWave * 0.32;
+              } else if (i < 11) {
+                combined = snareEnv * 0.55 + vocalWave * 0.68 + kickEnv * 0.2;
+              } else {
+                combined = hatEnv * 0.72 + snareEnv * 0.3 + vocalWave * 0.25;
+              }
+
+              targetVal = Math.min(
+                1,
+                Math.max(0.06, combined * Math.max(0.25, volume)),
+              );
+            }
+          }
+
+          if (targetVal > smoothBars[i]) {
+            smoothBars[i] = smoothBars[i] * 0.3 + targetVal * 0.7;
+          } else {
+            smoothBars[i] = Math.max(0, smoothBars[i] * 0.84 - 0.012);
+          }
+
+          if (smoothBars[i] >= peakBars[i]) {
+            peakBars[i] = smoothBars[i];
+            peakHoldFrames[i] = 14;
+          } else {
+            if (peakHoldFrames[i] > 0) {
+              peakHoldFrames[i]--;
+            } else {
+              peakBars[i] = Math.max(0, peakBars[i] - 0.028);
+            }
+          }
+
+          const totalSegments = 6;
+          const litSegments = Math.round(smoothBars[i] * totalSegments);
+          const peakSegment = Math.min(
+            totalSegments - 1,
+            Math.floor(peakBars[i] * totalSegments),
+          );
+
+          for (let s = 0; s < totalSegments; s++) {
+            const segHeight = 2;
+            const segGap = 1;
+            const y = canvas.height - (s + 1) * (segHeight + segGap);
+            if (s < litSegments) {
+              ctx.fillStyle =
+                s >= 4 ? "#ff4757" : s >= 2 ? "#2ecc71" : "#1b65cc";
+            } else if (activePlay && s === peakSegment && peakBars[i] > 0.14) {
+              ctx.fillStyle =
+                s >= 4 ? "rgba(255, 71, 87, 0.75)" : "rgba(27, 101, 204, 0.65)";
+            } else {
+              ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+            }
+            ctx.fillRect(i * (barWidth + gap), y, barWidth, segHeight);
+          }
+        }
+      }
+      renderVisualizer();
+
+      // --- ID3 METADATA & COVER GENERATORS ---
+      function readAscii(view, start, length) {
+        let str = "";
+        const end = Math.min(view.byteLength, start + length);
+        for (let i = start; i < end; i++) {
+          str += String.fromCharCode(view.getUint8(i));
+        }
+        return str;
+      }
+
+      async function extractMetadata(file) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            let cover = null;
+            try {
+              const view = new DataView(e.target.result);
+              if (readAscii(view, 0, 3) === "ID3") {
+                let offset = 10;
+                const limit = Math.min(view.byteLength, 256 * 1024);
+                let safetyCount = 0;
+                while (offset < limit - 10 && safetyCount < 80) {
+                  safetyCount++;
+                  const frameId = readAscii(view, offset, 4);
+                  const frameSize = view.getUint32(offset + 4);
+                  if (frameSize <= 0 || offset + 10 + frameSize > limit) break;
+                  if (frameId === "APIC") {
+                    let imgOffset = offset + 11;
+                    let mime = "";
+                    let strSteps = 0;
+                    while (
+                      imgOffset < offset + 10 + frameSize &&
+                      view.getUint8(imgOffset) !== 0 &&
+                      strSteps < 64
+                    ) {
+                      mime += String.fromCharCode(view.getUint8(imgOffset++));
+                      strSteps++;
+                    }
+                    imgOffset += 2;
+                    strSteps = 0;
+                    while (
+                      imgOffset < offset + 10 + frameSize &&
+                      view.getUint8(imgOffset) !== 0 &&
+                      strSteps < 128
+                    ) {
+                      imgOffset++;
+                      strSteps++;
+                    }
+                    imgOffset++;
+                    const len = offset + 10 + frameSize - imgOffset;
+                    if (len > 0) {
+                      const imgData = new Uint8Array(
+                        e.target.result,
+                        imgOffset,
+                        len,
+                      );
+                      cover = URL.createObjectURL(
+                        new Blob([imgData], { type: mime || "image/jpeg" }),
+                      );
+                    }
+                    break;
+                  }
+                  offset += 10 + frameSize;
+                }
+              }
+            } catch (err) {}
+            resolve(cover);
+          };
+          reader.readAsArrayBuffer(file.slice(0, 256 * 1024));
+        });
+      }
+
+      function createPlaceholderCover(title) {
+        const cvs = document.createElement("canvas");
+        cvs.width = 200;
+        cvs.height = 200;
+        const c = cvs.getContext("2d");
+        let hash = 0;
+        for (let i = 0; i < title.length; i++)
+          hash = title.charCodeAt(i) + ((hash << 5) - hash);
+        const h1 = Math.abs(hash % 360);
+        const grad = c.createLinearGradient(0, 0, 200, 200);
+        grad.addColorStop(0, `hsl(${h1}, 70%, 48%)`);
+        grad.addColorStop(1, `hsl(${(h1 + 45) % 360}, 80%, 24%)`);
+        c.fillStyle = grad;
+        c.fillRect(0, 0, 200, 200);
+        c.strokeStyle = "rgba(255,255,255,0.16)";
+        c.lineWidth = 3;
+        for (let r = 20; r < 90; r += 14) {
+          c.beginPath();
+          c.arc(100, 100, r, 0, Math.PI * 2);
+          c.stroke();
+        }
+        c.fillStyle = "#ffffff";
+        c.font = "bold 44px sans-serif";
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        c.fillText(title.charAt(0).toUpperCase() || "♪", 100, 96);
+        return cvs.toDataURL();
+      }
+
+      // --- MENU DATA (USING AUTHENTIC 2000s AQUA ICONS) ---
+      function getMenuData(menuId) {
+        if (menuId === "main") {
+          return {
+            title: "iPod",
+            items: [
+              {
+                label: "Music",
+                chevron: true,
+                iconKey: "music",
+                caption: `${playlist.length} Songs`,
+                action: () => pushMenu("music"),
+              },
+              {
+                label: "Cover Flow",
+                chevron: true,
+                iconKey: "coverflow",
+                caption: "Browse Albums",
+                action: () => pushView("coverflow"),
+              },
+              {
+                label: "Now Playing",
+                chevron: true,
+                iconKey: "nowplaying",
+                caption: playlist[currentIndex]?.title || "Not Playing",
+                action: () => pushView("nowplaying"),
+              },
+              {
+                label: "Shuffle Songs",
+                chevron: false,
+                iconKey: "shuffle",
+                caption: `Mode: ${getOrderLabel()}`,
+                action: () => {
+                  if (playlist.length > 0) {
+                    settings.playOrder = "shuffle";
+                    const randIdx = Math.floor(Math.random() * playlist.length);
+                    loadAndPlay(randIdx);
+                    pushView("nowplaying");
+                  } else {
+                    togglePlayOrder();
+                  }
+                },
+              },
+              {
+                label: "Add Local Songs",
+                chevron: false,
+                iconKey: "folder",
+                caption: "Queue Audio Files",
+                action: () => fileInput.click(),
+              },
+              {
+                label: "Add YouTube / List",
+                chevron: false,
+                iconKey: "youtube",
+                caption: "Bulk Links & Playlists",
+                action: () => openYtModal(),
+              },
+              {
+                label: "Settings",
+                chevron: true,
+                iconKey: "settings",
+                caption: "iPod Preferences",
+                action: () => pushMenu("settings"),
+              },
+            ],
+          };
+        }
+
+        if (menuId === "music") {
+          return {
+            title: "Music",
+            items: [
+              {
+                label: "Cover Flow",
+                chevron: true,
+                iconKey: "coverflow",
+                caption: "3D Album View",
+                action: () => pushView("coverflow"),
+              },
+              {
+                label: `Songs (${playlist.length})`,
+                chevron: true,
+                iconKey: "songs",
+                caption: "All Tracks",
+                action: () => pushMenu("songs"),
+              },
+              {
+                label: `Order: ${getOrderLabel()}`,
+                chevron: false,
+                iconKey: "shuffle",
+                caption: "In Order / Shuffle",
+                action: () => togglePlayOrder(),
+              },
+              {
+                label: `Loop: ${getRepeatLabel()}`,
+                chevron: false,
+                iconKey: "repeat",
+                caption: "Off / Loop All / Loop 1",
+                action: () => cycleRepeatMode(1),
+              },
+              {
+                label: "Add Local Songs",
+                chevron: false,
+                iconKey: "folder",
+                caption: "Queue MP3/WAV",
+                action: () => fileInput.click(),
+              },
+              {
+                label: "Add YouTube / List",
+                chevron: false,
+                iconKey: "youtube",
+                caption: "Bulk URLs & Playlists",
+                action: () => openYtModal(),
+              },
+            ],
+          };
+        }
+
+        if (menuId === "songs") {
+          if (playlist.length === 0) {
+            return {
+              title: "Songs",
+              items: [
+                {
+                  label: "Add Local Songs...",
+                  chevron: false,
+                  iconKey: "folder",
+                  caption: "Library is Empty",
+                  action: () => fileInput.click(),
+                },
+                {
+                  label: "Add YouTube / List...",
+                  chevron: false,
+                  iconKey: "youtube",
+                  caption: "Paste Links or Playlist",
+                  action: () => openYtModal(),
+                },
+              ],
+            };
+          }
+          return {
+            title: "Songs",
+            items: playlist.map((track, idx) => ({
+              label: track.title,
+              chevronSvg:
+                idx === currentIndex
+                  ? isPlaying
+                    ? INLINE_SVGS.speaker
+                    : INLINE_SVGS.pause
+                  : "",
+              art: track.cover,
+              caption: track.artist,
+              action: () => {
+                loadAndPlay(idx);
+                pushView("nowplaying");
+              },
+            })),
+          };
+        }
+
+        if (menuId === "settings") {
+          return {
+            title: "Settings",
+            items: [
+              {
+                label: `Play Mode: ${getOrderLabel()}`,
+                iconKey: "shuffle",
+                caption: "In Order or Shuffle",
+                action: () => togglePlayOrder(),
+              },
+              {
+                label: `Repeat: ${getRepeatLabel()}`,
+                iconKey: "repeat",
+                caption: "Off • Loop All • Loop 1",
+                action: () => cycleRepeatMode(1),
+              },
+              {
+                label: `Visualizer: ${settings.visualizer ? "On" : "Off"}`,
+                iconKey: "visualizer",
+                caption: "Equalizer Bars",
+                action: () => {
+                  settings.visualizer = !settings.visualizer;
+                  renderCurrentView();
+                },
+              },
+              {
+                label: `YT Audio Capture: ${tabCaptureStream ? "Live" : "Auto"}`,
+                iconKey: "mic",
+                caption: tabCaptureStream
+                  ? "Direct Tab FFT Active"
+                  : "Tap to Link Tab Audio",
+                action: () => {
+                  toggleTabAudioCapture();
+                },
+              },
+              {
+                label: `Click Sound: ${settings.clickSound ? "On" : "Off"}`,
+                iconKey: "sound",
+                caption: "Wheel Click Haptic",
+                action: () => {
+                  settings.clickSound = !settings.clickSound;
+                  renderCurrentView();
+                },
+              },
+              {
+                label: `About iPod`,
+                iconKey: "info",
+                caption: `${playlist.length} Tracks • OS 1.1.4`,
+                action: () => {},
+              },
+            ],
+          };
+        }
+      }
+
+      // --- NAVIGATION ---
+      function currentNav() {
+        return navStack[navStack.length - 1];
+      }
+
+      function pushMenu(menuId) {
+        navStack.push({ view: "menu", menuId, selectedIndex: 0 });
+        renderCurrentView();
+      }
+
+      function pushView(viewName) {
+        if (viewName === "coverflow") {
+          flowIndex = currentIndex >= 0 ? currentIndex : 0;
+        }
+        navStack.push({ view: viewName });
+        renderCurrentView();
+      }
+
+      function goBack() {
+        if (ytModal.classList.contains("active")) {
+          closeYtModal();
+          return;
+        }
+        if (navStack.length > 1) {
+          navStack.pop();
+          renderCurrentView();
+        }
+      }
+
+      function renderCurrentView() {
+        const nav = currentNav();
+        viewMenu.classList.remove("active");
+        viewCoverFlow.classList.remove("active");
+        viewNowPlaying.classList.remove("active");
+
+        if (nav.view === "menu") {
+          viewMenu.classList.add("active");
+          const data = getMenuData(nav.menuId);
+          statusTitle.textContent = data.title;
+
+          if (nav.selectedIndex >= data.items.length)
+            nav.selectedIndex = Math.max(0, data.items.length - 1);
+
+          menuListEl.innerHTML = "";
+          data.items.forEach((item, i) => {
+            const row = document.createElement("div");
+            row.className =
+              "menu-item" + (i === nav.selectedIndex ? " selected" : "");
+            const label = document.createElement("span");
+            label.className = "menu-item-label";
+            label.textContent = item.label;
+            row.appendChild(label);
+
+            if (item.chevron === true) {
+              const chev = document.createElement("span");
+              chev.className = "menu-chevron";
+              chev.innerHTML = INLINE_SVGS.chevron;
+              row.appendChild(chev);
+            } else if (item.chevronSvg) {
+              const chev = document.createElement("span");
+              chev.className = "menu-chevron";
+              chev.innerHTML = item.chevronSvg;
+              row.appendChild(chev);
+            }
+
+            row.addEventListener("click", () => {
+              nav.selectedIndex = i;
+              playClickSound();
+              item.action();
+            });
+            menuListEl.appendChild(row);
+          });
+
+          const selectedRow = menuListEl.children[nav.selectedIndex];
+          if (selectedRow) selectedRow.scrollIntoView({ block: "nearest" });
+
+          // Preview Pane Update with 2000s Aqua Icons
+          const activeItem = data.items[nav.selectedIndex];
+          previewPaneEl.innerHTML = "";
+          if (activeItem) {
+            const previewCover =
+              activeItem.art ||
+              (playlist[currentIndex] &&
+              activeItem.label.includes("Now Playing")
+                ? playlist[currentIndex].cover
+                : null);
+            if (previewCover) {
+              const img = document.createElement("img");
+              img.className = "preview-art";
+              img.src = previewCover;
+              previewPaneEl.appendChild(img);
+            } else {
+              const box = document.createElement("div");
+              box.className = "preview-icon-box";
+              box.innerHTML =
+                AQUA_ICONS[activeItem.iconKey] || AQUA_ICONS.music;
+              previewPaneEl.appendChild(box);
+            }
+            const cap = document.createElement("div");
+            cap.className = "preview-caption";
+            cap.textContent = activeItem.caption || "";
+            previewPaneEl.appendChild(cap);
+          }
+        }
+
+        if (nav.view === "coverflow") {
+          viewCoverFlow.classList.add("active");
+          statusTitle.textContent = "Cover Flow";
+          buildCoverFlowDOM();
+          updateCoverFlow();
+        }
+
+        if (nav.view === "nowplaying") {
+          viewNowPlaying.classList.add("active");
+          statusTitle.textContent = "Now Playing";
+          updateNowPlayingUI();
+        }
+      }
+
+      // --- COVER FLOW ENGINE ---
+      function buildCoverFlowDOM() {
+        flowStage.innerHTML = "";
+        if (playlist.length === 0) {
+          emptyFlow.style.display = "flex";
+          flowTitle.textContent = "";
+          flowSub.textContent = "";
+          return;
+        }
+        emptyFlow.style.display = "none";
+        playlist.forEach((item, index) => {
+          const card = document.createElement("div");
+          card.className = "album-card";
+          const img = document.createElement("img");
+          img.src = item.cover;
+          card.appendChild(img);
+          card.addEventListener("click", () => {
+            playClickSound();
+            if (flowIndex === index) {
+              loadAndPlay(index);
+              pushView("nowplaying");
+            } else {
+              flowIndex = index;
+              updateCoverFlow();
+            }
+          });
+          flowStage.appendChild(card);
+        });
+      }
+
+      function updateCoverFlow() {
+        if (playlist.length === 0) return;
+        if (flowIndex < 0) flowIndex = 0;
+        if (flowIndex >= playlist.length) flowIndex = playlist.length - 1;
+
+        const cards = flowStage.querySelectorAll(".album-card");
+        cards.forEach((card, index) => {
+          const diff = index - flowIndex;
+          if (diff === 0) {
+            card.style.transform =
+              "translateX(0px) translateZ(45px) rotateY(0deg)";
+            card.style.zIndex = "100";
+            card.style.opacity = "1";
+          } else if (diff < 0) {
+            const offset = Math.max(diff, -4);
+            card.style.transform = `translateX(${offset * 28 - 44}px) translateZ(-55px) rotateY(55deg)`;
+            card.style.zIndex = 50 + diff;
+            card.style.opacity = Math.abs(diff) > 3 ? "0" : "0.85";
+          } else {
+            const offset = Math.min(diff, 4);
+            card.style.transform = `translateX(${offset * 28 + 44}px) translateZ(-55px) rotateY(-55deg)`;
+            card.style.zIndex = 50 - diff;
+            card.style.opacity = Math.abs(diff) > 3 ? "0" : "0.85";
+          }
+        });
+
+        flowTitle.textContent = playlist[flowIndex].title;
+        flowSub.textContent = playlist[flowIndex].artist;
+      }
+
+      // --- NOW PLAYING UI ---
+      function updateNowPlayingUI() {
+        if (settings.playOrder === "shuffle") {
+          pillOrder.innerHTML = `${INLINE_SVGS.shuffleMini}<span>Shuffle</span>`;
+          pillOrder.classList.add("active");
+        } else {
+          pillOrder.innerHTML = `${INLINE_SVGS.orderArrow}<span>Order</span>`;
+          pillOrder.classList.remove("active");
+        }
+
+        if (settings.repeat === "one") {
+          pillRepeat.innerHTML = `${INLINE_SVGS.repeatMini}<span>1</span>`;
+          pillRepeat.classList.add("active");
+        } else if (settings.repeat === "all") {
+          pillRepeat.innerHTML = `${INLINE_SVGS.repeatMini}<span>All</span>`;
+          pillRepeat.classList.add("active");
+        } else {
+          pillRepeat.innerHTML = `${INLINE_SVGS.repeatMini}<span>Off</span>`;
+          pillRepeat.classList.remove("active");
+        }
+
+        pillOrder.classList.toggle("focused", npWheelMode === "order");
+        pillRepeat.classList.toggle("focused", npWheelMode === "repeat");
+        npBottom.classList.toggle("seek-mode", npWheelMode === "seek");
+
+        if (npWheelMode === "volume") {
+          npHint.textContent = "Wheel: Volume • Center: Mode";
+        } else if (npWheelMode === "seek") {
+          npHint.textContent = "Wheel: Scrub • Center: Order";
+        } else if (npWheelMode === "order") {
+          npHint.textContent = `Wheel: ${getOrderLabel()} • Center: Loop`;
+        } else if (npWheelMode === "repeat") {
+          npHint.textContent = `Wheel: Loop (${getRepeatLabel()}) • Center: Vol`;
+        }
+
+        const track = playlist[currentIndex];
+        if (!track) {
+          npCount.textContent = `0 of ${playlist.length}`;
+          npTitle.textContent = "No Song Selected";
+          npArtist.textContent =
+            playlist.length > 0
+              ? "Select a song from Music"
+              : "Add music from Menu";
+          npSource.textContent = "";
+          npArtImg.src = createPlaceholderCover("♪");
+          return;
+        }
+
+        npCount.textContent = `${currentIndex + 1} of ${playlist.length}`;
+        npTitle.textContent = track.title;
+        npArtist.textContent = track.artist;
+
+        if (track.type === "youtube") {
+          if (tabCaptureStream) {
+            npSource.textContent = "YouTube • Live Tab FFT";
+          } else if (track.syncStatus) {
+            npSource.textContent = `YouTube • ${track.syncStatus}`;
+          } else {
+            npSource.textContent = "YouTube Stream";
+          }
+        } else {
+          npSource.textContent = "Local Audio";
+        }
+        npArtImg.src = track.cover;
+      }
+
+      function formatTime(sec) {
+        if (!isFinite(sec) || sec < 0) return "0:00";
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s < 10 ? "0" : ""}${s}`;
+      }
+
+      setInterval(() => {
+        const track = playlist[currentIndex];
+        if (!track) return;
+
+        let cur = 0,
+          dur = 0;
+        if (
+          track.type === "youtube" &&
+          ytPlayer &&
+          isYtReady &&
+          typeof ytPlayer.getCurrentTime === "function"
+        ) {
+          cur = ytPlayer.getCurrentTime() || 0;
+          dur = ytPlayer.getDuration() || 0;
+          if (isShadowStreamActive) syncShadowAudioToYt(false);
+        } else if (track.type === "local") {
+          cur = audio.currentTime || 0;
+          dur = audio.duration || 0;
+        }
+
+        timeElapsed.textContent = formatTime(cur);
+        timeRemaining.textContent =
+          dur > 0 ? "-" + formatTime(Math.max(0, dur - cur)) : "-0:00";
+        const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+        scrubberFill.style.width = pct + "%";
+        scrubberDiamond.style.left = pct + "%";
+      }, 250);
+
+      function showVolumeOverlay() {
+        volumeFill.style.width = volume * 100 + "%";
+        volumeRow.classList.add("active");
+        clearTimeout(volumeTimer);
+        volumeTimer = setTimeout(() => {
+          volumeRow.classList.remove("active");
+        }, 1500);
+      }
+
+      // --- PLAYBACK CONTROLLER ---
+      function loadAndPlay(index) {
+        if (!playlist[index]) return;
+        currentIndex = index;
+        initAudio();
+        const track = playlist[index];
+
+        if (track.type === "youtube") {
+          audio.pause();
+          lastRawYtTime = 0;
+          lastYtSyncPerf = performance.now();
+          attachDirectYoutubeAudioStream(track);
+          if (!track.dnaAnalyzed) {
+            analyzeTrackAudioDNA(track, track.title, track.artist);
+          }
+          if (
+            ytPlayer &&
+            isYtReady &&
+            typeof ytPlayer.loadVideoById === "function"
+          ) {
+            ytPlayer.setVolume(volume * 100);
+            ytPlayer.loadVideoById(track.ytId);
+            ytPlayer.playVideo();
+          } else {
+            pendingYtId = track.ytId;
+          }
+        } else {
+          isShadowStreamActive = false;
+          shadowAudio.pause();
+          if (
+            ytPlayer &&
+            isYtReady &&
+            typeof ytPlayer.pauseVideo === "function"
+          ) {
+            ytPlayer.pauseVideo();
+          }
+          audio.volume = volume;
+          audio.src = track.url;
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+        }
+
+        isPlaying = true;
+        setPlayStateIndicator("playing");
+        if (currentNav().view === "nowplaying") updateNowPlayingUI();
+        if (currentNav().view === "menu") renderCurrentView();
+      }
+
+      function togglePlay() {
+        if (!playlist.length) return;
+        initAudio();
+
+        if (currentIndex < 0) {
+          loadAndPlay(0);
+          return;
+        }
+
+        const track = playlist[currentIndex];
+        if (track.type === "youtube") {
+          if (isPlaying) {
+            if (
+              ytPlayer &&
+              isYtReady &&
+              typeof ytPlayer.pauseVideo === "function"
+            ) {
+              ytPlayer.pauseVideo();
+            }
+            if (isShadowStreamActive) shadowAudio.pause();
+            isPlaying = false;
+            setPlayStateIndicator("paused");
+          } else {
+            if (!track.dnaAnalyzed) {
+              analyzeTrackAudioDNA(track, track.title, track.artist);
+            }
+            if (
+              ytPlayer &&
+              isYtReady &&
+              typeof ytPlayer.playVideo === "function"
+            ) {
+              const state = ytPlayer.getPlayerState
+                ? ytPlayer.getPlayerState()
+                : -1;
+              if (state === -1 || state === 5) {
+                ytPlayer.loadVideoById(track.ytId);
+              } else {
+                ytPlayer.playVideo();
+              }
+            }
+            if (isShadowStreamActive) shadowAudio.play().catch(() => {});
+            lastYtSyncPerf = performance.now();
+            isPlaying = true;
+            setPlayStateIndicator("playing");
+          }
+        } else {
+          if (audio.src !== track.url) {
+            loadAndPlay(currentIndex);
+          } else if (audio.paused) {
+            audio.play();
+            isPlaying = true;
+            setPlayStateIndicator("playing");
+          } else {
+            audio.pause();
+            isPlaying = false;
+            setPlayStateIndicator("paused");
+          }
+        }
+      }
+
+      function pickNextShuffleIndex() {
+        if (playlist.length <= 1) return 0;
+        let candidate = currentIndex;
+        for (let attempt = 0; attempt < 6; attempt++) {
+          const r = Math.floor(Math.random() * playlist.length);
+          if (r !== currentIndex) {
+            candidate = r;
+            break;
+          }
+        }
+        return candidate;
+      }
+
+      function handleTrackEnded() {
+        if (!playlist.length) return;
+
+        if (settings.repeat === "one") {
+          const track = playlist[currentIndex];
+          if (track && track.type === "youtube" && ytPlayer && isYtReady) {
+            ytPlayer.seekTo(0, true);
+            ytPlayer.playVideo();
+            lastRawYtTime = 0;
+            lastYtSyncPerf = performance.now();
+            if (isShadowStreamActive) {
+              shadowAudio.currentTime = 0;
+              shadowAudio.play().catch(() => {});
+            }
+          } else {
+            loadAndPlay(currentIndex);
+          }
+          return;
+        }
+
+        if (settings.playOrder === "shuffle") {
+          if (playlist.length === 1 && settings.repeat === "off") {
+            isPlaying = false;
+            setPlayStateIndicator("stopped");
+            return;
+          }
+          currentIndex = pickNextShuffleIndex();
+          flowIndex = currentIndex;
+          loadAndPlay(currentIndex);
+          if (currentNav().view === "coverflow") updateCoverFlow();
+          return;
+        }
+
+        if (currentIndex < playlist.length - 1) {
+          currentIndex++;
+          flowIndex = currentIndex;
+          loadAndPlay(currentIndex);
+          if (currentNav().view === "coverflow") updateCoverFlow();
+        } else if (settings.repeat === "all") {
+          currentIndex = 0;
+          flowIndex = 0;
+          loadAndPlay(0);
+          if (currentNav().view === "coverflow") updateCoverFlow();
+        } else {
+          isPlaying = false;
+          setPlayStateIndicator("stopped");
+          if (currentNav().view === "menu") renderCurrentView();
+        }
+      }
+
+      function nextTrack() {
+        if (!playlist.length) return;
+        if (settings.playOrder === "shuffle" && playlist.length > 1) {
+          currentIndex = pickNextShuffleIndex();
+        } else {
+          currentIndex = (currentIndex + 1) % playlist.length;
+        }
+        flowIndex = currentIndex;
+        loadAndPlay(currentIndex);
+        if (currentNav().view === "coverflow") updateCoverFlow();
+      }
+
+      function prevTrack() {
+        if (!playlist.length) return;
+        currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+        flowIndex = currentIndex;
+        loadAndPlay(currentIndex);
+        if (currentNav().view === "coverflow") updateCoverFlow();
+      }
+
+      audio.addEventListener("ended", handleTrackEnded);
+
+      // --- NON-INTRUSIVE LOCAL FILES & BULK YOUTUBE / PLAYLIST IMPORTER ---
+      fileInput.addEventListener("change", async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        const addedTracks = await Promise.all(
+          files.map(async (file) => {
+            const cleanName = file.name.replace(/\.[^/.]+$/, "");
+            const [artist, title] = cleanName.includes(" - ")
+              ? cleanName.split(" - ")
+              : ["Local Audio", cleanName];
+            const art = await extractMetadata(file);
+            return {
+              type: "local",
+              url: URL.createObjectURL(file),
+              title: title.trim(),
+              artist: artist.trim(),
+              cover: art || createPlaceholderCover(title),
+            };
+          }),
+        );
+
+        playlist.push(...addedTracks);
+        fileInput.value = "";
+
+        if (currentIndex === -1 && playlist.length > 0) {
+          currentIndex = 0;
+        }
+
+        renderCurrentView();
+        showStatusToast(
+          `Queued ${addedTracks.length} Song${addedTracks.length > 1 ? "s" : ""}`,
+        );
+      });
+
+      // Parses any block of text for multiple YouTube Video IDs & Playlist IDs
+      function parseYoutubeInputText(rawText) {
+        const videoIds = [];
+        const seenVideoIds = new Set();
+        const playlistIds = [];
+        const seenPlaylistIds = new Set();
+
+        // 1. Extract all Playlist IDs (?list=PL..., &list=OLAK..., etc.)
+        const listRegex = /[?&]list=([a-zA-Z0-9_-]{10,})/g;
+        for (const m of rawText.matchAll(listRegex)) {
+          const pid = m[1];
+          // Ignore watch-later / radio mix ephemeral IDs that start with RD if standalone video exists
+          if (!seenPlaylistIds.has(pid)) {
+            seenPlaylistIds.add(pid);
+            playlistIds.push(pid);
+          }
+        }
+
+        // 2. Extract all Video IDs from standard watch, youtu.be, embed, shorts, music.youtube URLs
+        const vidRegex =
+          /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:[^\s"'<>]*v(?:=|%3D)|embed\/|shorts\/|v\/))([\w-]{11})/g;
+        for (const m of rawText.matchAll(vidRegex)) {
+          const vid = m[1];
+          if (!seenVideoIds.has(vid)) {
+            seenVideoIds.add(vid);
+            videoIds.push(vid);
+          }
+        }
+
+        // 3. Also support raw 11-character video IDs pasted on individual lines/tokens
+        const tokens = rawText
+          .split(/[\s,;]+/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        for (let i = 0; i < Math.min(tokens.length, 200); i++) {
+          const tok = tokens[i];
+          if (/^[\w-]{11}$/.test(tok) && !seenVideoIds.has(tok)) {
+            seenVideoIds.add(tok);
+            videoIds.push(tok);
+          }
+        }
+
+        return { videoIds, playlistIds };
+      }
+
+      // Resolves a YouTube Playlist ID into an array of video items using public Piped / Invidious APIs concurrently
+      async function resolveYoutubePlaylistItems(playlistId) {
+        const endpoints = [
+          {
+            url: `https://pipedapi.kavin.rocks/playlists/${playlistId}`,
+            parse: (data) =>
+              (data.relatedStreams || [])
+                .map((item) => {
+                  const m = (item.url || "").match(/v=([\w-]{11})/);
+                  return m
+                    ? {
+                        ytId: m[1],
+                        title: item.title,
+                        artist: item.uploaderName,
+                      }
+                    : null;
+                })
+                .filter(Boolean),
+          },
+          {
+            url: `https://api.piped.private.coffee/playlists/${playlistId}`,
+            parse: (data) =>
+              (data.relatedStreams || [])
+                .map((item) => {
+                  const m = (item.url || "").match(/v=([\w-]{11})/);
+                  return m
+                    ? {
+                        ytId: m[1],
+                        title: item.title,
+                        artist: item.uploaderName,
+                      }
+                    : null;
+                })
+                .filter(Boolean),
+          },
+          {
+            url: `https://inv.tux.pizza/api/v1/playlists/${playlistId}`,
+            parse: (data) =>
+              (data.videos || [])
+                .map((v) =>
+                  v.videoId
+                    ? { ytId: v.videoId, title: v.title, artist: v.author }
+                    : null,
+                )
+                .filter(Boolean),
+          },
+        ];
+
+        const attemptEndpoint = async (ep) => {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 3200);
+          try {
+            const res = await fetch(ep.url, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (!res.ok) throw new Error("Bad status");
+            const json = await res.json();
+            const items = ep.parse(json);
+            if (!items || items.length === 0) throw new Error("Empty playlist");
+            return items;
+          } catch (e) {
+            clearTimeout(timer);
+            throw e;
+          }
+        };
+
+        try {
+          return await Promise.any(endpoints.map(attemptEndpoint));
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function createYoutubeTrackObject(ytId, customTitle, customArtist) {
+        let seed = 0;
+        for (let i = 0; i < ytId.length; i++)
+          seed = ytId.charCodeAt(i) + ((seed << 5) - seed);
+        return {
+          type: "youtube",
+          ytId: ytId,
+          title: customTitle || `YouTube Track (${ytId})`,
+          artist: customArtist || "YouTube Stream",
+          cover: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+          seed: Math.abs(seed),
+          detectedBpm: 120,
+          spectralFrames: null,
+          dnaAnalyzed: false,
+          syncStatus: "Sync Ready",
+        };
+      }
+
+      function updateModalLiveCounter() {
+        const { videoIds, playlistIds } = parseYoutubeInputText(
+          ytUrlInput.value,
+        );
+        const parts = [];
+        if (videoIds.length > 0)
+          parts.push(
+            `${videoIds.length} Video${videoIds.length > 1 ? "s" : ""}`,
+          );
+        if (playlistIds.length > 0)
+          parts.push(
+            `${playlistIds.length} List${playlistIds.length > 1 ? "s" : ""}`,
+          );
+        ytDetectBadge.textContent =
+          parts.length > 0 ? parts.join(" + ") : "0 Links";
+      }
+
+      ytUrlInput.addEventListener("input", updateModalLiveCounter);
+
+      function openYtModal() {
+        ytModal.classList.add("active");
+        updateModalLiveCounter();
+        ytModalSub.textContent =
+          "Supports bulk video URLs, Shorts, & public Playlists";
+        setTimeout(() => ytUrlInput.focus(), 50);
+      }
+
+      function closeYtModal() {
+        ytModal.classList.remove("active");
+        ytUrlInput.value = "";
+        ytAddBtn.disabled = false;
+        ytAddBtn.textContent = "Queue All";
+        updateModalLiveCounter();
+      }
+
+      ytCancelBtn.addEventListener("click", closeYtModal);
+
+      ytAddBtn.addEventListener("click", async () => {
+        const raw = ytUrlInput.value.trim();
+        if (!raw) return;
+
+        const { videoIds, playlistIds } = parseYoutubeInputText(raw);
+        if (videoIds.length === 0 && playlistIds.length === 0) {
+          ytModalSub.textContent =
+            "No valid YouTube video or playlist links detected.";
+          return;
+        }
+
+        ytAddBtn.disabled = true;
+        ytAddBtn.textContent = "Importing...";
+
+        const tracksToAdd = [];
+        const addedIdsSet = new Set();
+
+        // 1. Expand any YouTube Playlist URLs concurrently
+        if (playlistIds.length > 0) {
+          ytModalSub.textContent = `Expanding ${playlistIds.length} YouTube Playlist(s)...`;
+          const resolvedLists = await Promise.all(
+            playlistIds.map((pid) => resolveYoutubePlaylistItems(pid)),
+          );
+          resolvedLists.forEach((listItems) => {
+            listItems.forEach((item) => {
+              if (!addedIdsSet.has(item.ytId)) {
+                addedIdsSet.add(item.ytId);
+                tracksToAdd.push(
+                  createYoutubeTrackObject(item.ytId, item.title, item.artist),
+                );
+              }
+            });
+          });
+        }
+
+        // 2. Add all individual / bulk YouTube video links
+        const tracksNeedingMetadata = [];
+        videoIds.forEach((vid) => {
+          if (!addedIdsSet.has(vid)) {
+            addedIdsSet.add(vid);
+            const trk = createYoutubeTrackObject(vid);
+            tracksToAdd.push(trk);
+            tracksNeedingMetadata.push(trk);
+          }
+        });
+
+        if (tracksToAdd.length === 0) {
+          ytAddBtn.disabled = false;
+          ytAddBtn.textContent = "Queue All";
+          ytModalSub.textContent =
+            "Playlist appears private/unavailable. Paste direct video links!";
+          return;
+        }
+
+        // Queue all tracks non-intrusively without interrupting current song
+        playlist.push(...tracksToAdd);
+        if (currentIndex === -1) {
+          currentIndex = 0;
+        }
+
+        closeYtModal();
+        renderCurrentView();
+        showStatusToast(
+          `Queued ${tracksToAdd.length} YT Track${tracksToAdd.length > 1 ? "s" : ""}`,
+        );
+
+        // 3. Fetch oEmbed titles in parallel for direct video links (capped to 25 concurrent requests)
+        if (tracksNeedingMetadata.length > 0) {
+          await Promise.all(
+            tracksNeedingMetadata.slice(0, 25).map(async (trk) => {
+              try {
+                const res = await fetch(
+                  `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${trk.ytId}`,
+                );
+                const data = await res.json();
+                if (data.title) trk.title = data.title;
+                if (data.author_name) trk.artist = data.author_name;
+              } catch (e) {}
+            }),
+          );
+          renderCurrentView();
+        }
+
+        // Pre-analyze Audio DNA for the first newly added track in the background
+        if (tracksToAdd[0]) {
+          analyzeTrackAudioDNA(
+            tracksToAdd[0],
+            tracksToAdd[0].title,
+            tracksToAdd[0].artist,
+          );
+        }
+      });
+
+      // --- HARDWARE BUTTON & WHEEL EVENT ROUTING ---
+      function handleWheelStep(dir) {
+        const nav = currentNav();
+
+        if (nav.view === "menu") {
+          const data = getMenuData(nav.menuId);
+          const nextIdx = nav.selectedIndex + dir;
+          if (nextIdx >= 0 && nextIdx < data.items.length) {
+            nav.selectedIndex = nextIdx;
+            playClickSound();
+            renderCurrentView();
+          }
+        } else if (nav.view === "coverflow" && playlist.length > 0) {
+          const nextFlow = flowIndex + dir;
+          if (nextFlow >= 0 && nextFlow < playlist.length) {
+            flowIndex = nextFlow;
+            playClickSound();
+            updateCoverFlow();
+          }
+        } else if (nav.view === "nowplaying") {
+          if (npWheelMode === "volume") {
+            volume = Math.max(0, Math.min(1, volume + dir * 0.05));
+            audio.volume = volume;
+            if (
+              ytPlayer &&
+              isYtReady &&
+              typeof ytPlayer.setVolume === "function"
+            ) {
+              ytPlayer.setVolume(volume * 100);
+            }
+            playClickSound();
+            showVolumeOverlay();
+          } else if (npWheelMode === "seek" && playlist[currentIndex]) {
+            const track = playlist[currentIndex];
+            playClickSound();
+            if (
+              track.type === "youtube" &&
+              ytPlayer &&
+              isYtReady &&
+              typeof ytPlayer.getCurrentTime === "function"
+            ) {
+              const cur = ytPlayer.getCurrentTime() || 0;
+              const dur = ytPlayer.getDuration() || 0;
+              const target = Math.max(0, Math.min(dur, cur + dir * 5));
+              ytPlayer.seekTo(target, true);
+              lastRawYtTime = target;
+              lastYtSyncPerf = performance.now();
+              if (isShadowStreamActive) shadowAudio.currentTime = target;
+            } else if (track.type === "local" && isFinite(audio.duration)) {
+              audio.currentTime = Math.max(
+                0,
+                Math.min(audio.duration, audio.currentTime + dir * 5),
+              );
+            }
+          } else if (npWheelMode === "order") {
+            playClickSound();
+            togglePlayOrder();
+          } else if (npWheelMode === "repeat") {
+            playClickSound();
+            cycleRepeatMode(dir >= 0 ? 1 : -1);
+          }
+        }
+      }
+
+      function handleCenterPress() {
+        if (ytModal.classList.contains("active")) return;
+        const nav = currentNav();
+
+        if (nav.view === "menu") {
+          const data = getMenuData(nav.menuId);
+          const item = data.items[nav.selectedIndex];
+          if (item && item.action) item.action();
+        } else if (nav.view === "coverflow") {
+          if (playlist.length > 0) {
+            loadAndPlay(flowIndex);
+            pushView("nowplaying");
+          }
+        } else if (nav.view === "nowplaying") {
+          const modes = ["volume", "seek", "order", "repeat"];
+          npWheelMode = modes[(modes.indexOf(npWheelMode) + 1) % modes.length];
+          volumeRow.classList.remove("active");
+          updateNowPlayingUI();
+        }
+      }
+
+      function attachTiltButton(el, tiltClass, action) {
+        const trigger = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          playClickSound();
+          wheel.classList.add(tiltClass);
+          action();
+          setTimeout(() => wheel.classList.remove(tiltClass), 140);
+        };
+        el.addEventListener("pointerdown", trigger);
+      }
+
+      attachTiltButton(btnMenu, "tilt-up", goBack);
+      attachTiltButton(btnPlay, "tilt-down", togglePlay);
+
+      attachTiltButton(btnPrev, "tilt-left", () => {
+        const nav = currentNav();
+        if (nav.view === "menu" || nav.view === "coverflow") {
+          handleWheelStep(-1);
+        } else {
+          prevTrack();
+        }
+      });
+
+      attachTiltButton(btnNext, "tilt-right", () => {
+        const nav = currentNav();
+        if (nav.view === "menu" || nav.view === "coverflow") {
+          handleWheelStep(1);
+        } else {
+          nextTrack();
+        }
+      });
+
+      btnCenter.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        playClickSound();
+        btnCenter.classList.add("pressed");
+        handleCenterPress();
+      });
+      window.addEventListener("pointerup", () =>
+        btnCenter.classList.remove("pressed"),
+      );
+      window.addEventListener("pointercancel", () =>
+        btnCenter.classList.remove("pressed"),
+      );
+
+      // Rotary Wheel Drag Gesture
+      let isDragging = false;
+      let lastAngle = 0;
+      let accumulatedAngle = 0;
+
+      function getAngle(e) {
+        const rect = wheel.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        return Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI);
+      }
+
+      wheel.addEventListener("pointerdown", (e) => {
+        if (e.target === btnCenter || e.target.closest(".wheel-btn")) return;
+        isDragging = true;
+        lastAngle = getAngle(e);
+        accumulatedAngle = 0;
+      });
+
+      window.addEventListener("pointermove", (e) => {
+        if (!isDragging) return;
+        const angle = getAngle(e);
+        let delta = angle - lastAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+
+        accumulatedAngle += delta;
+        lastAngle = angle;
+
+        const STEP = 18;
+        if (accumulatedAngle >= STEP) {
+          handleWheelStep(1);
+          accumulatedAngle = 0;
+        } else if (accumulatedAngle <= -STEP) {
+          handleWheelStep(-1);
+          accumulatedAngle = 0;
+        }
+      });
+
+      window.addEventListener("pointerup", () => (isDragging = false));
+      window.addEventListener("pointercancel", () => (isDragging = false));
+
+      // Initial Boot Render
+      renderCurrentView();
+    </script>
+  </body>
+</html>
