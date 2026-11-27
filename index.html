@@ -1641,6 +1641,10 @@
 
       // --- AUDIO, FFT ANALYSER & HAPTIC SYNTHESIZER ---
       function initAudio() {
+        // Background playback uses the native media element, not Web Audio.
+        // Do not resume the visualizer/click-sound context from a media action
+        // or an automatic track change while the page is hidden.
+        if (document.hidden) return;
         if (!audioContext) {
           const AudioContextClass = window.AudioContext || window.webkitAudioContext;
           if (!AudioContextClass) return;
@@ -1794,9 +1798,44 @@
         }
       }
 
+      // Let the native local-audio element own playback while backgrounded.
+      // Suspending this optional context only affects the visualizer and clicks;
+      // it never pauses, resumes, or restarts the user's music.
+      let suspendedForBackground = false;
+      let backgroundSuspendPending = false;
+      function restoreVisualizerContext() {
+        if (document.hidden || !suspendedForBackground || backgroundSuspendPending || !audioContext) return;
+        suspendedForBackground = false;
+        if (audioContext.state === "suspended") {
+          try {
+            const result = audioContext.resume();
+            if (result && typeof result.catch === "function") result.catch(() => {});
+          } catch (error) {}
+        }
+      }
+
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden) shadowAudio.pause();
-        else if (playlist[currentIndex]?.type === "youtube") syncShadowAudioToYt();
+        if (document.hidden) {
+          shadowAudio.pause();
+          if (playlist[currentIndex]?.type === "local" && audioContext && audioContext.state === "running" && !backgroundSuspendPending) {
+            try {
+              suspendedForBackground = true;
+              backgroundSuspendPending = true;
+              Promise.resolve(audioContext.suspend()).catch(() => {
+                suspendedForBackground = false;
+              }).finally(() => {
+                backgroundSuspendPending = false;
+                restoreVisualizerContext();
+              });
+            } catch (error) {
+              suspendedForBackground = false;
+              backgroundSuspendPending = false;
+            }
+          }
+        } else {
+          restoreVisualizerContext();
+          if (playlist[currentIndex]?.type === "youtube") syncShadowAudioToYt();
+        }
       });
 
       async function attachDirectYoutubeAudioStream(track) {
