@@ -10,6 +10,10 @@ Host the files together on HTTPS (or use localhost for development). Open the si
 
 Installation options and availability vary by browser and device. Once loaded online, the app interface can reopen offline, but YouTube playback, streamed music, and other online services require an internet connection. When deploying updates, increment the cache version in `service-worker.js` to refresh the offline shell.
 
+## Background playback
+
+Start a local song while the page is open. On supported browsers and devices, playback can continue when you switch apps or lock the screen; lock-screen and headset controls can play, pause, skip, and seek where supported. Keep the tab or installed app running: closing it, force-quitting it, or having the operating system terminate it stops playback. Browsers and operating systems can also suspend background playback, so behavior varies by device. YouTube tracks use the embedded YouTube player and may stop in the background due to browser or YouTube restrictions; this app cannot override those restrictions. The in-memory queue is not restored after the page is closed. On browsers without native audio-stream capture, the local-song visualizer uses a decorative animation instead of live frequency analysis.
+
 ## Removing songs
 
 Choose **Music → Delete Songs**, select a song, and confirm **Delete Song** using the click wheel or by tapping the screen. Removing the current song stops playback; other songs stay in the queue. This removes the song only from the current in-memory queue, not from your device or YouTube. The queue is cleared when the app is reloaded.

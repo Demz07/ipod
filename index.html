@@ -1079,7 +1079,7 @@
       </div>
     </div>
 
-    <audio id="audio" crossorigin="anonymous"></audio>
+    <audio id="audio" crossorigin="anonymous" preload="metadata" playsinline></audio>
     <audio id="shadow-audio" crossorigin="anonymous"></audio>
     <div id="yt-player-container"><div id="yt-player"></div></div>
     <input type="file" id="file-input" multiple accept="audio/*" />
@@ -1404,6 +1404,9 @@
       );
 
       function setPlayStateIndicator(state) {
+        if ("mediaSession" in navigator) {
+          navigator.mediaSession.playbackState = state === "stopped" ? "none" : state;
+        }
         if (state === "playing") {
           playStateIcon.innerHTML = INLINE_SVGS.statusPlay;
           playStateIcon.style.display = "inline-flex";
@@ -1421,6 +1424,97 @@
         toastTimer = setTimeout(() => {
           renderCurrentView();
         }, 2000);
+      }
+
+      // The Media Session API lets supported browsers expose lock-screen and
+      // headset controls. The page must still be alive for playback to continue.
+      function updateMediaMetadata() {
+        if (!("mediaSession" in navigator)) return;
+        const track = playlist[currentIndex];
+        if (!track) {
+          navigator.mediaSession.metadata = null;
+          return;
+        }
+        if (typeof window.MediaMetadata !== "function") return;
+        try {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.title,
+            artist: track.artist,
+            album: "iPod Classic",
+            artwork: [{ src: track.cover || new URL("./icons/icon-512.png", document.baseURI).href }],
+          });
+        } catch (error) {
+          console.warn("Unable to update media metadata:", error);
+        }
+      }
+
+      function getPlaybackPosition() {
+        const track = playlist[currentIndex];
+        if (!track) return null;
+        if (track.type === "youtube") {
+          if (!ytPlayer || !isYtReady || typeof ytPlayer.getDuration !== "function" || typeof ytPlayer.getCurrentTime !== "function") return null;
+          return { duration: ytPlayer.getDuration(), position: ytPlayer.getCurrentTime() };
+        }
+        return { duration: audio.duration, position: audio.currentTime };
+      }
+
+      function updateMediaPosition() {
+        if (!("mediaSession" in navigator) || typeof navigator.mediaSession.setPositionState !== "function") return;
+        const state = getPlaybackPosition();
+        if (!state || !Number.isFinite(state.duration) || state.duration <= 0 || !Number.isFinite(state.position)) return;
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: state.duration,
+            playbackRate: 1,
+            position: Math.max(0, Math.min(state.duration, state.position)),
+          });
+        } catch (error) {
+          // Some browsers expose the API without supporting position updates.
+        }
+      }
+
+      function seekPlayback(seconds) {
+        const state = getPlaybackPosition();
+        if (!state || !Number.isFinite(state.duration) || state.duration <= 0 || !Number.isFinite(seconds)) return;
+        const target = Math.max(0, Math.min(state.duration, seconds));
+        if (playlist[currentIndex].type === "youtube") {
+          if (typeof ytPlayer.seekTo !== "function") return;
+          ytPlayer.seekTo(target, true);
+          lastRawYtTime = target;
+          lastYtSyncPerf = performance.now();
+          if (isShadowStreamActive) shadowAudio.currentTime = target;
+        } else {
+          audio.currentTime = target;
+        }
+        updateMediaPosition();
+      }
+
+      function setupMediaSession() {
+        if (!("mediaSession" in navigator) || typeof navigator.mediaSession.setActionHandler !== "function") return;
+        const actions = {
+          play: () => {
+            const track = playlist[currentIndex];
+            if (!track || (track.type === "local" ? audio.paused : !isPlaying)) togglePlay();
+          },
+          pause: () => {
+            const track = playlist[currentIndex];
+            if (track && (track.type === "local" ? !audio.paused : isPlaying)) togglePlay();
+          },
+          previoustrack: prevTrack,
+          nexttrack: nextTrack,
+          seekto: (details) => seekPlayback(details.seekTime),
+          seekbackward: (details) => {
+            const state = getPlaybackPosition();
+            if (state) seekPlayback(state.position - (details.seekOffset || 10));
+          },
+          seekforward: (details) => {
+            const state = getPlaybackPosition();
+            if (state) seekPlayback(state.position + (details.seekOffset || 10));
+          },
+        };
+        for (const [action, handler] of Object.entries(actions)) {
+          try { navigator.mediaSession.setActionHandler(action, handler); } catch (error) {}
+        }
       }
 
       // --- PLAYBACK MODE HELPERS ---
@@ -1481,7 +1575,7 @@
             onReady: () => {
               isYtReady = true;
               ytPlayer.setVolume(volume * 100);
-              if (pendingYtId) {
+              if (pendingYtId && playlist[currentIndex]?.ytId === pendingYtId && isPlaying) {
                 ytPlayer.loadVideoById(pendingYtId);
                 ytPlayer.playVideo();
                 pendingYtId = null;
@@ -1521,12 +1615,13 @@
       // --- AUDIO, FFT ANALYSER & HAPTIC SYNTHESIZER ---
       function initAudio() {
         if (!audioContext) {
-          audioContext = new (
-            window.AudioContext || window.webkitAudioContext
-          )();
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextClass) return;
+          audioContext = new AudioContextClass();
         }
         if (audioContext.state === "suspended") {
-          audioContext.resume();
+          const resumeResult = audioContext.resume();
+          if (resumeResult && typeof resumeResult.catch === "function") resumeResult.catch(() => {});
         }
         if (!analyser) {
           analyser = audioContext.createAnalyser();
@@ -1534,11 +1629,13 @@
           analyser.smoothingTimeConstant = 0.72;
           dataArray = new Uint8Array(analyser.frequencyBinCount);
         }
-        if (!sourceNode) {
+        // Keep local playback on the native media element instead of routing it
+        // through Web Audio, which mobile browsers may suspend in the background.
+        // Capture a separate stream for the visualizer only where supported.
+        if (!sourceNode && typeof audio.captureStream === "function") {
           try {
-            sourceNode = audioContext.createMediaElementSource(audio);
+            sourceNode = audioContext.createMediaStreamSource(audio.captureStream());
             sourceNode.connect(analyser);
-            sourceNode.connect(audioContext.destination);
           } catch (err) {}
         }
         if (!shadowSourceNode) {
@@ -1556,6 +1653,7 @@
 
       async function toggleTabAudioCapture() {
         initAudio();
+        if (!audioContext || !analyser) return;
         if (tabCaptureStream) {
           tabCaptureStream.getTracks().forEach((t) => t.stop());
           if (tabCaptureNode) tabCaptureNode.disconnect();
@@ -1945,6 +2043,11 @@
                 1,
                 Math.max(0.06, combined * Math.max(0.25, volume)),
               );
+            } else if (!sourceNode) {
+              // Decorative fallback when the browser cannot capture a native
+              // audio stream for live analysis (not a real frequency reading).
+              const phase = audio.currentTime * 3 + i * 0.7;
+              targetVal = (0.12 + Math.abs(Math.sin(phase) * Math.cos(phase * 0.63)) * 0.48) * volume;
             }
           }
 
@@ -2621,6 +2724,7 @@
           dur = audio.duration || 0;
         }
 
+        if (track.type === "youtube") updateMediaPosition();
         timeElapsed.textContent = formatTime(cur);
         timeRemaining.textContent =
           dur > 0 ? "-" + formatTime(Math.max(0, dur - cur)) : "-0:00";
@@ -2668,14 +2772,38 @@
         if (track.type === "local" && track.url?.startsWith("blob:")) URL.revokeObjectURL(track.url);
         if (track.cover?.startsWith("blob:")) URL.revokeObjectURL(track.cover);
         updateNowPlayingUI();
+        if (wasCurrent) updateMediaMetadata();
       }
 
       // --- PLAYBACK CONTROLLER ---
+      function playLocalAudio(track) {
+        try {
+          const playResult = audio.play();
+          if (playResult && typeof playResult.catch === "function") {
+            playResult.catch(() => {
+              if (playlist[currentIndex] !== track || !audio.paused) return;
+              isPlaying = false;
+              setPlayStateIndicator("paused");
+              showStatusToast("Tap play to retry");
+            });
+          }
+        } catch (error) {
+          isPlaying = false;
+          setPlayStateIndicator("paused");
+          showStatusToast("Tap play to retry");
+        }
+      }
+
       function loadAndPlay(index) {
         if (!playlist[index]) return;
         currentIndex = index;
-        initAudio();
+        // The native media element must remain usable even if Web Audio is unavailable.
+        try { initAudio(); } catch (error) {}
+        if (navigator.audioSession) {
+          try { navigator.audioSession.type = "playback"; } catch (error) {}
+        }
         const track = playlist[index];
+        updateMediaMetadata();
 
         if (track.type === "youtube") {
           audio.pause();
@@ -2696,7 +2824,10 @@
           } else {
             pendingYtId = track.ytId;
           }
+          isPlaying = true;
+          setPlayStateIndicator("playing");
         } else {
+          pendingYtId = null;
           isShadowStreamActive = false;
           shadowAudio.pause();
           if (
@@ -2709,18 +2840,18 @@
           audio.volume = volume;
           audio.src = track.url;
           audio.currentTime = 0;
-          audio.play().catch(() => {});
+          isPlaying = false;
+          setPlayStateIndicator("paused");
+          playLocalAudio(track);
         }
 
-        isPlaying = true;
-        setPlayStateIndicator("playing");
         if (currentNav().view === "nowplaying") updateNowPlayingUI();
         if (currentNav().view === "menu") renderCurrentView();
       }
 
       function togglePlay() {
         if (!playlist.length) return;
-        initAudio();
+        try { initAudio(); } catch (error) {}
 
         if (currentIndex < 0) {
           loadAndPlay(0);
@@ -2738,6 +2869,7 @@
               ytPlayer.pauseVideo();
             }
             if (isShadowStreamActive) shadowAudio.pause();
+            pendingYtId = null;
             isPlaying = false;
             setPlayStateIndicator("paused");
           } else {
@@ -2757,6 +2889,8 @@
               } else {
                 ytPlayer.playVideo();
               }
+            } else {
+              pendingYtId = track.ytId;
             }
             if (isShadowStreamActive) shadowAudio.play().catch(() => {});
             lastYtSyncPerf = performance.now();
@@ -2767,13 +2901,9 @@
           if (audio.src !== track.url) {
             loadAndPlay(currentIndex);
           } else if (audio.paused) {
-            audio.play();
-            isPlaying = true;
-            setPlayStateIndicator("playing");
+            playLocalAudio(track);
           } else {
             audio.pause();
-            isPlaying = false;
-            setPlayStateIndicator("paused");
           }
         }
       }
@@ -2861,7 +2991,28 @@
         if (currentNav().view === "coverflow") updateCoverFlow();
       }
 
-      audio.addEventListener("ended", handleTrackEnded);
+      audio.addEventListener("play", () => {
+        if (playlist[currentIndex]?.type !== "local" || audio.paused) return;
+        isPlaying = true;
+        setPlayStateIndicator("playing");
+        updateMediaPosition();
+        if (currentNav().view === "menu") renderCurrentView();
+      });
+      audio.addEventListener("pause", () => {
+        if (playlist[currentIndex]?.type !== "local" || !audio.paused) return;
+        isPlaying = false;
+        setPlayStateIndicator("paused");
+        updateMediaPosition();
+        if (currentNav().view === "menu") renderCurrentView();
+      });
+      audio.addEventListener("ended", () => {
+        if (playlist[currentIndex]?.type === "local") handleTrackEnded();
+      });
+      for (const eventName of ["loadedmetadata", "durationchange", "timeupdate", "seeked"]) {
+        audio.addEventListener(eventName, () => {
+          if (playlist[currentIndex]?.type === "local") updateMediaPosition();
+        });
+      }
 
       // --- NON-INTRUSIVE LOCAL FILES & BULK YOUTUBE / PLAYLIST IMPORTER ---
       fileInput.addEventListener("change", async (e) => {
@@ -3151,6 +3302,7 @@
             }),
           );
           renderCurrentView();
+          if (tracksNeedingMetadata.includes(playlist[currentIndex])) updateMediaMetadata();
         }
 
         // Pre-analyze Audio DNA for the first newly added track in the background
@@ -3338,6 +3490,7 @@
       window.addEventListener("pointercancel", () => (isDragging = false));
 
       // Initial Boot Render
+      setupMediaSession();
       renderCurrentView();
     </script>
     <script>
