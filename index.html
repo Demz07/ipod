@@ -1084,6 +1084,7 @@
     <div id="yt-player-container"><div id="yt-player"></div></div>
     <input type="file" id="file-input" multiple accept="audio/*" />
 
+    <script src="./youtube-library.js"></script>
     <script>
       // --- AUTHENTIC 2000s APPLE AQUA / iPOD OS 6th-GEN SKEUOMORPHIC SVG ICON LIBRARY ---
       const AQUA_ICONS = {
@@ -1304,6 +1305,8 @@
 
       // --- STATE ---
       let playlist = [];
+      // Do not overwrite storage if reading an existing library failed.
+      let youtubeLibraryReadable = false;
       let currentIndex = -1;
       let isPlaying = false;
       let volume = 0.8;
@@ -1514,6 +1517,30 @@
         };
         for (const [action, handler] of Object.entries(actions)) {
           try { navigator.mediaSession.setActionHandler(action, handler); } catch (error) {}
+        }
+      }
+
+      function restoreYoutubeLibrary() {
+        try {
+          const saved = YouTubeLibrary.read(window.localStorage);
+          playlist.push(...saved.map((track) => createYoutubeTrackObject(track.ytId, track.title, track.artist)));
+          if (playlist.length) currentIndex = 0;
+          youtubeLibraryReadable = true;
+          return true;
+        } catch (error) {
+          console.warn("Could not restore YouTube library:", error);
+          return false;
+        }
+      }
+
+      function saveYoutubeLibrary() {
+        if (!youtubeLibraryReadable) return false;
+        try {
+          YouTubeLibrary.write(window.localStorage, playlist);
+          return true;
+        } catch (error) {
+          console.warn("Could not save YouTube library:", error);
+          return false;
         }
       }
 
@@ -1750,6 +1777,12 @@
 
       function syncShadowAudioToYt(forcePlay = false) {
         if (!isShadowStreamActive || !ytPlayer || !isYtReady) return;
+        // The silent visualizer stream is not the song; avoid a second media
+        // session competing with the player when the page is backgrounded.
+        if (document.hidden) {
+          if (!shadowAudio.paused) shadowAudio.pause();
+          return;
+        }
         const ytSec = ytPlayer.getCurrentTime() || 0;
         if (Math.abs(shadowAudio.currentTime - ytSec) > 0.12) {
           shadowAudio.currentTime = ytSec;
@@ -1760,6 +1793,11 @@
           shadowAudio.pause();
         }
       }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) shadowAudio.pause();
+        else if (playlist[currentIndex]?.type === "youtube") syncShadowAudioToYt();
+      });
 
       async function attachDirectYoutubeAudioStream(track) {
         isShadowStreamActive = false;
@@ -2347,9 +2385,9 @@
             items: [
               { label: "Cancel", caption: track.title, art: track.cover, action: () => goBack() },
               { label: "Delete Song", caption: track.title, art: track.cover, action: () => {
-                deleteTrack(track);
+                const saved = deleteTrack(track);
                 goBack();
-                showStatusToast("Song removed");
+                showStatusToast(saved ? "Song removed" : "Save failed");
               } },
             ],
           };
@@ -2745,10 +2783,11 @@
       // Remove a queued track without deleting the original file on the device.
       function deleteTrack(track) {
         const index = playlist.indexOf(track);
-        if (index === -1) return;
+        if (index === -1) return true;
 
         const wasCurrent = index === currentIndex;
         playlist.splice(index, 1);
+        const saved = track.type !== "youtube" || saveYoutubeLibrary();
         if (wasCurrent) {
           currentIndex = -1;
           isPlaying = false;
@@ -2773,6 +2812,7 @@
         if (track.cover?.startsWith("blob:")) URL.revokeObjectURL(track.cover);
         updateNowPlayingUI();
         if (wasCurrent) updateMediaMetadata();
+        return saved;
       }
 
       // --- PLAYBACK CONTROLLER ---
@@ -2892,9 +2932,9 @@
             } else {
               pendingYtId = track.ytId;
             }
-            if (isShadowStreamActive) shadowAudio.play().catch(() => {});
             lastYtSyncPerf = performance.now();
             isPlaying = true;
+            if (isShadowStreamActive) syncShadowAudioToYt(true);
             setPlayStateIndicator("playing");
           }
         } else {
@@ -2933,7 +2973,7 @@
             lastYtSyncPerf = performance.now();
             if (isShadowStreamActive) {
               shadowAudio.currentTime = 0;
-              shadowAudio.play().catch(() => {});
+              syncShadowAudioToYt(true);
             }
           } else {
             loadAndPlay(currentIndex);
@@ -3277,15 +3317,16 @@
 
         // Queue all tracks non-intrusively without interrupting current song
         playlist.push(...tracksToAdd);
+        const saved = saveYoutubeLibrary();
         if (currentIndex === -1) {
           currentIndex = 0;
         }
 
         closeYtModal();
         renderCurrentView();
-        showStatusToast(
-          `Queued ${tracksToAdd.length} YT Track${tracksToAdd.length > 1 ? "s" : ""}`,
-        );
+        showStatusToast(saved
+          ? `Saved ${tracksToAdd.length} YT Track${tracksToAdd.length > 1 ? "s" : ""}`
+          : "Save failed");
 
         // 3. Fetch oEmbed titles in parallel for direct video links (capped to 25 concurrent requests)
         if (tracksNeedingMetadata.length > 0) {
@@ -3301,6 +3342,9 @@
               } catch (e) {}
             }),
           );
+          // Save the updated titles from the current queue, so a track deleted
+          // while metadata was loading cannot be accidentally restored.
+          if (!saveYoutubeLibrary()) showStatusToast("Save failed");
           renderCurrentView();
           if (tracksNeedingMetadata.includes(playlist[currentIndex])) updateMediaMetadata();
         }
@@ -3489,9 +3533,11 @@
       window.addEventListener("pointerup", () => (isDragging = false));
       window.addEventListener("pointercancel", () => (isDragging = false));
 
-      // Initial Boot Render
+      // Restore saved links without automatically starting playback.
+      const libraryRestored = restoreYoutubeLibrary();
       setupMediaSession();
       renderCurrentView();
+      if (!libraryRestored) setTimeout(() => showStatusToast("Library unavailable"), 1600);
     </script>
     <script>
       if ("serviceWorker" in navigator) {
