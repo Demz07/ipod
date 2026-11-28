@@ -1079,12 +1079,15 @@
       </div>
     </div>
 
-    <audio id="audio" crossorigin="anonymous" preload="metadata" playsinline></audio>
-    <audio id="shadow-audio" crossorigin="anonymous"></audio>
+    <!-- Every song (local files and YouTube audio streams) plays through this
+         one native element so playback continues in the background. -->
+    <audio id="audio" crossorigin="anonymous" preload="auto" playsinline></audio>
     <div id="yt-player-container"><div id="yt-player"></div></div>
     <input type="file" id="file-input" multiple accept="audio/*" />
 
     <script src="./youtube-library.js"></script>
+    <script src="./youtube-stream.js"></script>
+    <script src="./playback-queue.js"></script>
     <script>
       // --- AUTHENTIC 2000s APPLE AQUA / iPOD OS 6th-GEN SKEUOMORPHIC SVG ICON LIBRARY ---
       const AQUA_ICONS = {
@@ -1328,8 +1331,9 @@
       let audioContext = null;
       let analyser = null;
       let sourceNode = null;
-      let shadowSourceNode = null;
-      let silentGainNode = null;
+      let captureStreamRef = null;
+      let captureTrackId = null;
+      let liveSignalSeen = false;
       let tabCaptureStream = null;
       let tabCaptureNode = null;
       let dataArray = null;
@@ -1341,7 +1345,28 @@
       let pendingYtId = null;
       let lastRawYtTime = 0;
       let lastYtSyncPerf = performance.now();
-      let isShadowStreamActive = false;
+
+      // Background playback state. YouTube tracks are resolved to audio-only
+      // streams and played natively; the embedded video player is only a
+      // foreground fallback because mobile browsers pause it in the background.
+      const streamResolver = YouTubeStream.createResolver({
+        canPlayType: (mime) => document.createElement("audio").canPlayType(mime),
+      });
+      let playbackToken = 0; // Invalidates stale async stream resolutions.
+      let upcomingShuffleIndex = null; // Pre-picked so it can be prefetched.
+      let consecutivePlaybackErrors = 0;
+      let retryPlayOnGesture = false;
+
+      // track.playback for YouTube: null (not started) | "resolving" | "stream" | "embed"
+      function usesNativeAudio(track) {
+        return !!track && (track.type === "local" || track.playback === "stream");
+      }
+      function usesEmbed(track) {
+        return !!track && track.type === "youtube" && track.playback === "embed";
+      }
+      function isCurrentNativeSource(track) {
+        return usesNativeAudio(track) && !!track.nativeSrc && audio.src === track.nativeSrc;
+      }
 
       // Visualizer Physics State (16 Bars)
       const BAR_COUNT = 16;
@@ -1389,7 +1414,6 @@
       const ytCancelBtn = document.getElementById("yt-cancel");
 
       const audio = document.getElementById("audio");
-      const shadowAudio = document.getElementById("shadow-audio");
       const fileInput = document.getElementById("file-input");
       const wheel = document.getElementById("wheel");
       const btnCenter = document.getElementById("btn-center");
@@ -1454,10 +1478,11 @@
       function getPlaybackPosition() {
         const track = playlist[currentIndex];
         if (!track) return null;
-        if (track.type === "youtube") {
+        if (usesEmbed(track)) {
           if (!ytPlayer || !isYtReady || typeof ytPlayer.getDuration !== "function" || typeof ytPlayer.getCurrentTime !== "function") return null;
           return { duration: ytPlayer.getDuration(), position: ytPlayer.getCurrentTime() };
         }
+        if (!isCurrentNativeSource(track)) return null;
         return { duration: audio.duration, position: audio.currentTime };
       }
 
@@ -1480,12 +1505,11 @@
         const state = getPlaybackPosition();
         if (!state || !Number.isFinite(state.duration) || state.duration <= 0 || !Number.isFinite(seconds)) return;
         const target = Math.max(0, Math.min(state.duration, seconds));
-        if (playlist[currentIndex].type === "youtube") {
+        if (usesEmbed(playlist[currentIndex])) {
           if (typeof ytPlayer.seekTo !== "function") return;
           ytPlayer.seekTo(target, true);
           lastRawYtTime = target;
           lastYtSyncPerf = performance.now();
-          if (isShadowStreamActive) shadowAudio.currentTime = target;
         } else {
           audio.currentTime = target;
         }
@@ -1497,11 +1521,11 @@
         const actions = {
           play: () => {
             const track = playlist[currentIndex];
-            if (!track || (track.type === "local" ? audio.paused : !isPlaying)) togglePlay();
+            if (!track || (usesNativeAudio(track) ? audio.paused : !isPlaying)) togglePlay();
           },
           pause: () => {
             const track = playlist[currentIndex];
-            if (track && (track.type === "local" ? !audio.paused : isPlaying)) togglePlay();
+            if (track && (usesNativeAudio(track) ? !audio.paused : isPlaying)) togglePlay();
           },
           previoustrack: prevTrack,
           nexttrack: nextTrack,
@@ -1548,6 +1572,8 @@
       function togglePlayOrder() {
         settings.playOrder =
           settings.playOrder === "in-order" ? "shuffle" : "in-order";
+        upcomingShuffleIndex = null;
+        if (isPlaying) prefetchUpcoming();
         updateNowPlayingUI();
         if (currentNav().view === "menu") renderCurrentView();
       }
@@ -1556,6 +1582,7 @@
         const modes = ["off", "all", "one"];
         const idx = modes.indexOf(settings.repeat);
         settings.repeat = modes[(idx + dir + modes.length) % modes.length];
+        if (isPlaying) prefetchUpcoming();
         updateNowPlayingUI();
         if (currentNav().view === "menu") renderCurrentView();
       }
@@ -1602,34 +1629,44 @@
             onReady: () => {
               isYtReady = true;
               ytPlayer.setVolume(volume * 100);
-              if (pendingYtId && playlist[currentIndex]?.ytId === pendingYtId && isPlaying) {
+              const current = playlist[currentIndex];
+              if (pendingYtId && usesEmbed(current) && current.ytId === pendingYtId && isPlaying) {
                 ytPlayer.loadVideoById(pendingYtId);
                 ytPlayer.playVideo();
                 pendingYtId = null;
               }
             },
             onStateChange: (e) => {
-              if (playlist[currentIndex]?.type !== "youtube") return;
+              // Only the foreground video fallback is driven by the embed.
+              if (!usesEmbed(playlist[currentIndex])) return;
               if (e.data === YT.PlayerState.PLAYING) {
                 isPlaying = true;
                 isYtBuffering = false;
+                consecutivePlaybackErrors = 0;
                 lastRawYtTime = ytPlayer.getCurrentTime() || 0;
                 lastYtSyncPerf = performance.now();
                 setPlayStateIndicator("playing");
-                syncShadowAudioToYt(true);
+                prefetchUpcoming();
               } else if (e.data === YT.PlayerState.BUFFERING) {
                 isYtBuffering = true;
-                if (isShadowStreamActive) shadowAudio.pause();
               } else if (e.data === YT.PlayerState.PAUSED) {
                 isPlaying = false;
                 isYtBuffering = false;
                 setPlayStateIndicator("paused");
-                if (isShadowStreamActive) shadowAudio.pause();
               } else if (e.data === YT.PlayerState.ENDED) {
                 isYtBuffering = false;
-                if (isShadowStreamActive) shadowAudio.pause();
                 handleTrackEnded();
               }
+            },
+            // Removed, private, or embed-blocked videos (codes 100/101/150)
+            // would otherwise leave the player stuck showing "playing".
+            onError: (e) => {
+              if (!usesEmbed(playlist[currentIndex])) return;
+              console.warn("YouTube player error:", e && e.data);
+              isPlaying = false;
+              isYtBuffering = false;
+              showStatusToast("Video unavailable");
+              skipAfterError();
             },
           },
         });
@@ -1660,26 +1697,27 @@
           analyser.smoothingTimeConstant = 0.72;
           dataArray = new Uint8Array(analyser.frequencyBinCount);
         }
-        // Keep local playback on the native media element instead of routing it
-        // through Web Audio, which mobile browsers may suspend in the background.
-        // Capture a separate stream for the visualizer only where supported.
-        if (!sourceNode && typeof audio.captureStream === "function") {
-          try {
-            sourceNode = audioContext.createMediaStreamSource(audio.captureStream());
-            sourceNode.connect(analyser);
-          } catch (err) {}
-        }
-        if (!shadowSourceNode) {
-          try {
-            silentGainNode = audioContext.createGain();
-            silentGainNode.gain.value = 0;
-            shadowSourceNode =
-              audioContext.createMediaElementSource(shadowAudio);
-            shadowSourceNode.connect(analyser);
-            shadowSourceNode.connect(silentGainNode);
-            silentGainNode.connect(audioContext.destination);
-          } catch (err) {}
-        }
+        connectCaptureSource();
+      }
+
+      // Keep playback on the native media element instead of routing it
+      // through Web Audio, which mobile browsers may suspend in the background.
+      // A captured copy of the element's output feeds the visualizer only,
+      // where supported. Captured tracks are replaced whenever the element's
+      // source changes, so reconnect to the live track on each new song.
+      function connectCaptureSource() {
+        if (!audioContext || !analyser || document.hidden || typeof audio.captureStream !== "function") return;
+        try {
+          if (!captureStreamRef) captureStreamRef = audio.captureStream();
+          const liveTrack = captureStreamRef.getAudioTracks().find((t) => t.readyState === "live");
+          if (!liveTrack || liveTrack.id === captureTrackId) return;
+          if (sourceNode) {
+            try { sourceNode.disconnect(); } catch (err) {}
+          }
+          sourceNode = audioContext.createMediaStreamSource(new MediaStream([liveTrack]));
+          sourceNode.connect(analyser);
+          captureTrackId = liveTrack.id;
+        } catch (err) {}
       }
 
       async function toggleTabAudioCapture() {
@@ -1726,7 +1764,7 @@
 
       canvas.addEventListener("click", () => {
         const track = playlist[currentIndex];
-        if (track && track.type === "youtube") {
+        if (usesEmbed(track)) {
           playClickSound();
           toggleTabAudioCapture();
         }
@@ -1779,26 +1817,7 @@
         return rawTime + Math.min(0.35, Math.max(0, elapsed * rate));
       }
 
-      function syncShadowAudioToYt(forcePlay = false) {
-        if (!isShadowStreamActive || !ytPlayer || !isYtReady) return;
-        // The silent visualizer stream is not the song; avoid a second media
-        // session competing with the player when the page is backgrounded.
-        if (document.hidden) {
-          if (!shadowAudio.paused) shadowAudio.pause();
-          return;
-        }
-        const ytSec = ytPlayer.getCurrentTime() || 0;
-        if (Math.abs(shadowAudio.currentTime - ytSec) > 0.12) {
-          shadowAudio.currentTime = ytSec;
-        }
-        if (isPlaying && !isYtBuffering && (shadowAudio.paused || forcePlay)) {
-          shadowAudio.play().catch(() => {});
-        } else if (!isPlaying && !shadowAudio.paused) {
-          shadowAudio.pause();
-        }
-      }
-
-      // Let the native local-audio element own playback while backgrounded.
+      // Let the native audio element own playback while backgrounded.
       // Suspending this optional context only affects the visualizer and clicks;
       // it never pauses, resumes, or restarts the user's music.
       let suspendedForBackground = false;
@@ -1816,8 +1835,10 @@
 
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-          shadowAudio.pause();
-          if (playlist[currentIndex]?.type === "local" && audioContext && audioContext.state === "running" && !backgroundSuspendPending) {
+          // Web Audio only drives the visualizer and clicks, never the music,
+          // so it can always be suspended while hidden (including while a
+          // YouTube stream is still connecting).
+          if (audioContext && audioContext.state === "running" && !backgroundSuspendPending) {
             try {
               suspendedForBackground = true;
               backgroundSuspendPending = true;
@@ -1834,62 +1855,9 @@
           }
         } else {
           restoreVisualizerContext();
-          if (playlist[currentIndex]?.type === "youtube") syncShadowAudioToYt();
+          if (usesNativeAudio(playlist[currentIndex])) connectCaptureSource();
         }
       });
-
-      async function attachDirectYoutubeAudioStream(track) {
-        isShadowStreamActive = false;
-        shadowAudio.pause();
-        shadowAudio.removeAttribute("src");
-
-        const pipedInstances = [
-          `https://pipedapi.kavin.rocks/streams/${track.ytId}`,
-          `https://api.piped.private.coffee/streams/${track.ytId}`,
-        ];
-
-        const fetchCandidate = async (endpoint) => {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 2200);
-          try {
-            const res = await fetch(endpoint, { signal: controller.signal });
-            clearTimeout(timer);
-            if (!res.ok) throw new Error("Status " + res.status);
-            const data = await res.json();
-            const streams =
-              data && Array.isArray(data.audioStreams) ? data.audioStreams : [];
-            const best =
-              streams.find(
-                (s) => s.mimeType && s.mimeType.includes("audio/mp4"),
-              ) || streams[0];
-            if (!best || !best.url) throw new Error("No stream");
-            return best.url;
-          } catch (err) {
-            clearTimeout(timer);
-            throw err;
-          }
-        };
-
-        try {
-          const streamUrl = await Promise.any(
-            pipedInstances.map(fetchCandidate),
-          );
-          if (streamUrl && playlist[currentIndex] === track) {
-            shadowAudio.src = streamUrl;
-            shadowAudio.oncanplay = () => {
-              if (playlist[currentIndex] === track) {
-                isShadowStreamActive = true;
-                track.syncStatus = "Direct Stream FFT";
-                syncShadowAudioToYt(true);
-                updateNowPlayingUI();
-              }
-            };
-            shadowAudio.onerror = () => {
-              isShadowStreamActive = false;
-            };
-          }
-        } catch (e) {}
-      }
 
       // Ultra-fast (< 3ms) single-pass Audio DNA & BPM extractor
       async function analyzeTrackAudioDNA(track, rawTitle, rawAuthor) {
@@ -2006,14 +1974,12 @@
           track.detectedBpm = Math.round((60 * fps) / bestLag);
           track.spectralFrames = frames;
           track.spectralFps = fps;
-          if (!isShadowStreamActive) {
-            track.syncStatus = `Synced (${track.detectedBpm} BPM Audio DNA)`;
-            if (
-              playlist[currentIndex] === track &&
-              currentNav().view === "nowplaying"
-            ) {
-              updateNowPlayingUI();
-            }
+          track.syncStatus = `Synced (${track.detectedBpm} BPM Audio DNA)`;
+          if (
+            playlist[currentIndex] === track &&
+            currentNav().view === "nowplaying"
+          ) {
+            updateNowPlayingUI();
           }
         } catch (e) {}
       }
@@ -2028,19 +1994,23 @@
         const gap = 2;
         const barWidth = (canvas.width - (BAR_COUNT - 1) * gap) / BAR_COUNT;
         const currentTrack = playlist[currentIndex];
-        const isYtTrack = currentTrack && currentTrack.type === "youtube";
+        // Video-mode YouTube uses the timing-based visualizer; native audio
+        // (local files and YouTube streams) uses live analysis when available.
+        const isYtTrack = usesEmbed(currentTrack);
+        const isNativeTrack = usesNativeAudio(currentTrack);
         const activePlay = isPlaying && (!isYtTrack || !isYtBuffering);
 
         let hasLiveFftSignal = false;
         if (
           analyser &&
           activePlay &&
-          (!isYtTrack || tabCaptureStream || isShadowStreamActive)
+          (isNativeTrack || tabCaptureStream)
         ) {
           analyser.getByteFrequencyData(dataArray);
           for (let k = 0; k < 16; k++) {
             if (dataArray[k] > 2) {
               hasLiveFftSignal = true;
+              liveSignalSeen = true;
               break;
             }
           }
@@ -2120,7 +2090,7 @@
                 1,
                 Math.max(0.06, combined * Math.max(0.25, volume)),
               );
-            } else if (!sourceNode) {
+            } else if (isNativeTrack && !liveSignalSeen) {
               // Decorative fallback when the browser cannot capture a native
               // audio stream for live analysis (not a real frequency reading).
               const phase = audio.currentTime * 3 + i * 0.7;
@@ -2761,12 +2731,17 @@
         npArtist.textContent = track.artist;
 
         if (track.type === "youtube") {
-          if (tabCaptureStream) {
-            npSource.textContent = "YouTube • Live Tab FFT";
-          } else if (track.syncStatus) {
-            npSource.textContent = `YouTube • ${track.syncStatus}`;
-          } else {
+          if (track.playback === "stream") {
+            npSource.textContent = "YouTube • Background Audio";
+          } else if (track.playback === "resolving") {
+            npSource.textContent = "YouTube • Connecting…";
+          } else if (track.playback !== "embed") {
             npSource.textContent = "YouTube Stream";
+          } else if (tabCaptureStream) {
+            npSource.textContent = "YouTube Video • Live Tab FFT";
+          } else {
+            // The embedded video player only plays while the app is open.
+            npSource.textContent = "YouTube Video • Keep App Open";
           }
         } else {
           npSource.textContent = "Local Audio";
@@ -2788,20 +2763,19 @@
         let cur = 0,
           dur = 0;
         if (
-          track.type === "youtube" &&
+          usesEmbed(track) &&
           ytPlayer &&
           isYtReady &&
           typeof ytPlayer.getCurrentTime === "function"
         ) {
           cur = ytPlayer.getCurrentTime() || 0;
           dur = ytPlayer.getDuration() || 0;
-          if (isShadowStreamActive) syncShadowAudioToYt(false);
-        } else if (track.type === "local") {
+        } else if (isCurrentNativeSource(track)) {
           cur = audio.currentTime || 0;
           dur = audio.duration || 0;
         }
 
-        if (track.type === "youtube") updateMediaPosition();
+        if (usesEmbed(track)) updateMediaPosition();
         timeElapsed.textContent = formatTime(cur);
         timeRemaining.textContent =
           dur > 0 ? "-" + formatTime(Math.max(0, dur - cur)) : "-0:00";
@@ -2827,18 +2801,16 @@
         const wasCurrent = index === currentIndex;
         playlist.splice(index, 1);
         const saved = track.type !== "youtube" || saveYoutubeLibrary();
+        upcomingShuffleIndex = null;
         if (wasCurrent) {
+          playbackToken++;
           currentIndex = -1;
           isPlaying = false;
           isYtBuffering = false;
           pendingYtId = null;
-          isShadowStreamActive = false;
           audio.pause();
           audio.removeAttribute("src");
           audio.load();
-          shadowAudio.pause();
-          shadowAudio.removeAttribute("src");
-          shadowAudio.load();
           if (ytPlayer && isYtReady && typeof ytPlayer.stopVideo === "function") {
             ytPlayer.stopVideo();
           }
@@ -2855,27 +2827,127 @@
       }
 
       // --- PLAYBACK CONTROLLER ---
+      // Background playback works like a native music app: every song plays
+      // through the single <audio> element, the next YouTube stream is
+      // resolved while the current song plays, and the track switch on
+      // "ended" happens synchronously so the OS never sees the app go silent.
       function playLocalAudio(track) {
+        const onBlocked = () => {
+          if (playlist[currentIndex] !== track || !audio.paused) return;
+          isPlaying = false;
+          setPlayStateIndicator("paused");
+          // Playback started from a pointerdown may not count as a user
+          // gesture yet; retry on the same tap's pointerup/click.
+          retryPlayOnGesture = true;
+          showStatusToast("Tap play to retry");
+        };
         try {
           const playResult = audio.play();
           if (playResult && typeof playResult.catch === "function") {
-            playResult.catch(() => {
-              if (playlist[currentIndex] !== track || !audio.paused) return;
-              isPlaying = false;
-              setPlayStateIndicator("paused");
-              showStatusToast("Tap play to retry");
+            playResult.catch((error) => {
+              // AbortError: the source changed. NotSupportedError: the
+              // "error" event handler deals with unplayable media.
+              if (error && (error.name === "AbortError" || error.name === "NotSupportedError")) return;
+              onBlocked();
             });
           }
         } catch (error) {
-          isPlaying = false;
-          setPlayStateIndicator("paused");
-          showStatusToast("Tap play to retry");
+          onBlocked();
         }
+      }
+
+      function playNativeSource(track, src, { resumeAt = 0 } = {}) {
+        pendingYtId = null;
+        // CORS lets the visualizer analyse the audio. If a stream proxy omits
+        // CORS headers, the error handler retries without it.
+        if (track.noCors) audio.removeAttribute("crossorigin");
+        else audio.crossOrigin = "anonymous";
+        audio.volume = volume;
+        audio.src = src;
+        track.nativeSrc = audio.src; // Normalised URL for later comparisons.
+        liveSignalSeen = false;
+        if (resumeAt > 0) {
+          audio.addEventListener("loadedmetadata", () => {
+            if (audio.src !== track.nativeSrc) return;
+            try { audio.currentTime = resumeAt; } catch (error) {}
+          }, { once: true });
+        }
+        playLocalAudio(track);
+      }
+
+      function stopEmbedPlayer() {
+        pendingYtId = null;
+        if (ytPlayer && isYtReady && typeof ytPlayer.pauseVideo === "function") {
+          try { ytPlayer.pauseVideo(); } catch (error) {}
+        }
+      }
+
+      function refreshTrackUI() {
+        if (currentNav().view === "nowplaying") updateNowPlayingUI();
+        else if (currentNav().view === "menu") renderCurrentView();
+      }
+
+      function startYoutubeTrack(track, { force = false, resumeAt = 0 } = {}) {
+        const token = ++playbackToken;
+        const cached = force ? null : streamResolver.peek(track.ytId);
+        if (cached) {
+          // Prefetched: switch synchronously (important when backgrounded).
+          useYoutubeStream(track, cached, resumeAt);
+          return;
+        }
+        stopEmbedPlayer();
+        audio.pause();
+        track.playback = "resolving";
+        isPlaying = true;
+        setPlayStateIndicator("playing");
+        streamResolver.resolve(track.ytId, { force }).then(
+          (entry) => {
+            if (token !== playbackToken || playlist[currentIndex] !== track) return;
+            useYoutubeStream(track, entry, resumeAt);
+            refreshTrackUI();
+          },
+          (error) => {
+            if (token !== playbackToken || playlist[currentIndex] !== track) return;
+            console.warn("No background audio stream for", track.ytId, error);
+            fallbackToEmbed(track, resumeAt);
+            refreshTrackUI();
+          },
+        );
+      }
+
+      function useYoutubeStream(track, entry, resumeAt = 0) {
+        stopEmbedPlayer();
+        track.playback = "stream";
+        track.streamUrl = entry.url;
+        playNativeSource(track, entry.url, { resumeAt });
+      }
+
+      // Foreground-only fallback: mobile browsers pause the embedded video
+      // player when the app is hidden, so this cannot play in the background.
+      function fallbackToEmbed(track, resumeAt = 0) {
+        track.playback = "embed";
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        lastRawYtTime = resumeAt;
+        lastYtSyncPerf = performance.now();
+        if (!track.dnaAnalyzed) analyzeTrackAudioDNA(track, track.title, track.artist);
+        if (ytPlayer && isYtReady && typeof ytPlayer.loadVideoById === "function") {
+          ytPlayer.setVolume(volume * 100);
+          ytPlayer.loadVideoById({ videoId: track.ytId, startSeconds: resumeAt || 0 });
+          ytPlayer.playVideo();
+        } else {
+          pendingYtId = track.ytId;
+        }
+        isPlaying = true;
+        setPlayStateIndicator("playing");
+        if (!document.hidden) showStatusToast("Video mode: keep app open");
       }
 
       function loadAndPlay(index) {
         if (!playlist[index]) return;
         currentIndex = index;
+        upcomingShuffleIndex = null;
         // The native media element must remain usable even if Web Audio is unavailable.
         try { initAudio(); } catch (error) {}
         if (navigator.audioSession) {
@@ -2885,47 +2957,14 @@
         updateMediaMetadata();
 
         if (track.type === "youtube") {
-          audio.pause();
-          lastRawYtTime = 0;
-          lastYtSyncPerf = performance.now();
-          attachDirectYoutubeAudioStream(track);
-          if (!track.dnaAnalyzed) {
-            analyzeTrackAudioDNA(track, track.title, track.artist);
-          }
-          if (
-            ytPlayer &&
-            isYtReady &&
-            typeof ytPlayer.loadVideoById === "function"
-          ) {
-            ytPlayer.setVolume(volume * 100);
-            ytPlayer.loadVideoById(track.ytId);
-            ytPlayer.playVideo();
-          } else {
-            pendingYtId = track.ytId;
-          }
-          isPlaying = true;
-          setPlayStateIndicator("playing");
+          startYoutubeTrack(track);
         } else {
-          pendingYtId = null;
-          isShadowStreamActive = false;
-          shadowAudio.pause();
-          if (
-            ytPlayer &&
-            isYtReady &&
-            typeof ytPlayer.pauseVideo === "function"
-          ) {
-            ytPlayer.pauseVideo();
-          }
-          audio.volume = volume;
-          audio.src = track.url;
-          audio.currentTime = 0;
-          isPlaying = false;
-          setPlayStateIndicator("paused");
-          playLocalAudio(track);
+          playbackToken++;
+          stopEmbedPlayer();
+          playNativeSource(track, track.url);
         }
 
-        if (currentNav().view === "nowplaying") updateNowPlayingUI();
-        if (currentNav().view === "menu") renderCurrentView();
+        refreshTrackUI();
       }
 
       function togglePlay() {
@@ -2938,159 +2977,274 @@
         }
 
         const track = playlist[currentIndex];
-        if (track.type === "youtube") {
-          if (isPlaying) {
-            if (
-              ytPlayer &&
-              isYtReady &&
-              typeof ytPlayer.pauseVideo === "function"
-            ) {
-              ytPlayer.pauseVideo();
-            }
-            if (isShadowStreamActive) shadowAudio.pause();
-            pendingYtId = null;
-            isPlaying = false;
-            setPlayStateIndicator("paused");
-          } else {
-            if (!track.dnaAnalyzed) {
-              analyzeTrackAudioDNA(track, track.title, track.artist);
-            }
-            if (
-              ytPlayer &&
-              isYtReady &&
-              typeof ytPlayer.playVideo === "function"
-            ) {
-              const state = ytPlayer.getPlayerState
-                ? ytPlayer.getPlayerState()
-                : -1;
-              if (state === -1 || state === 5) {
-                ytPlayer.loadVideoById(track.ytId);
-              } else {
-                ytPlayer.playVideo();
-              }
-            } else {
-              pendingYtId = track.ytId;
-            }
-            lastYtSyncPerf = performance.now();
-            isPlaying = true;
-            if (isShadowStreamActive) syncShadowAudioToYt(true);
-            setPlayStateIndicator("playing");
-          }
-        } else {
-          if (audio.src !== track.url) {
+        if (usesNativeAudio(track)) {
+          if (!isCurrentNativeSource(track)) {
             loadAndPlay(currentIndex);
           } else if (audio.paused) {
             playLocalAudio(track);
           } else {
             audio.pause();
           }
+          return;
+        }
+
+        if (track.playback === "resolving") {
+          // Cancel a stream that is still connecting.
+          playbackToken++;
+          track.playback = null;
+          isPlaying = false;
+          setPlayStateIndicator("paused");
+          refreshTrackUI();
+          return;
+        }
+
+        if (!usesEmbed(track)) {
+          loadAndPlay(currentIndex);
+          return;
+        }
+
+        if (isPlaying) {
+          if (ytPlayer && isYtReady && typeof ytPlayer.pauseVideo === "function") {
+            ytPlayer.pauseVideo();
+          }
+          pendingYtId = null;
+          isPlaying = false;
+          setPlayStateIndicator("paused");
+        } else {
+          if (ytPlayer && isYtReady && typeof ytPlayer.playVideo === "function") {
+            const state = ytPlayer.getPlayerState ? ytPlayer.getPlayerState() : -1;
+            if (state === -1 || state === 5) {
+              ytPlayer.loadVideoById(track.ytId);
+            } else {
+              ytPlayer.playVideo();
+            }
+          } else {
+            pendingYtId = track.ytId;
+          }
+          lastYtSyncPerf = performance.now();
+          isPlaying = true;
+          setPlayStateIndicator("playing");
         }
       }
 
-      function pickNextShuffleIndex() {
-        if (playlist.length <= 1) return 0;
-        let candidate = currentIndex;
-        for (let attempt = 0; attempt < 6; attempt++) {
-          const r = Math.floor(Math.random() * playlist.length);
-          if (r !== currentIndex) {
-            candidate = r;
-            break;
-          }
+      function queueArgs(auto) {
+        return {
+          length: playlist.length,
+          current: currentIndex,
+          order: settings.playOrder,
+          repeat: settings.repeat,
+          auto,
+          upcoming: upcomingShuffleIndex,
+        };
+      }
+
+      function goToIndex(index) {
+        flowIndex = index;
+        loadAndPlay(index);
+        if (currentNav().view === "coverflow") updateCoverFlow();
+      }
+
+      function stopAtEndOfQueue() {
+        isPlaying = false;
+        setPlayStateIndicator("stopped");
+        if (currentNav().view === "menu") renderCurrentView();
+      }
+
+      // Resolve the next song's stream while this one plays, so the switch at
+      // the end of the song needs no network request (the page may be
+      // backgrounded and must not go silent between songs).
+      function prefetchUpcoming() {
+        if (!playlist.length || currentIndex < 0) return;
+        if (settings.playOrder === "shuffle" && upcomingShuffleIndex === null) {
+          upcomingShuffleIndex = PlaybackQueue.randomOtherIndex(playlist.length, currentIndex);
         }
-        return candidate;
+        const next = PlaybackQueue.nextIndex(queueArgs(true));
+        const upcoming = playlist[next];
+        if (next !== currentIndex && upcoming && upcoming.type === "youtube") {
+          streamResolver.resolve(upcoming.ytId).catch(() => {});
+        }
       }
 
       function handleTrackEnded() {
         if (!playlist.length) return;
-
-        if (settings.repeat === "one") {
-          const track = playlist[currentIndex];
-          if (track && track.type === "youtube" && ytPlayer && isYtReady) {
+        const track = playlist[currentIndex];
+        const next = PlaybackQueue.nextIndex(queueArgs(true));
+        if (next === -1) {
+          stopAtEndOfQueue();
+          return;
+        }
+        if (next === currentIndex && track) {
+          // Repeat one (or a one-song loop): restart in place.
+          if (isCurrentNativeSource(track)) {
+            audio.currentTime = 0;
+            playLocalAudio(track);
+            return;
+          }
+          if (usesEmbed(track) && ytPlayer && isYtReady) {
             ytPlayer.seekTo(0, true);
             ytPlayer.playVideo();
             lastRawYtTime = 0;
             lastYtSyncPerf = performance.now();
-            if (isShadowStreamActive) {
-              shadowAudio.currentTime = 0;
-              syncShadowAudioToYt(true);
-            }
-          } else {
-            loadAndPlay(currentIndex);
-          }
-          return;
-        }
-
-        if (settings.playOrder === "shuffle") {
-          if (playlist.length === 1 && settings.repeat === "off") {
-            isPlaying = false;
-            setPlayStateIndicator("stopped");
             return;
           }
-          currentIndex = pickNextShuffleIndex();
-          flowIndex = currentIndex;
-          loadAndPlay(currentIndex);
-          if (currentNav().view === "coverflow") updateCoverFlow();
+        }
+        goToIndex(next);
+      }
+
+      // Skip an unplayable song without looping forever on a broken queue.
+      function skipAfterError() {
+        consecutivePlaybackErrors++;
+        const next = PlaybackQueue.nextIndex({
+          ...queueArgs(true),
+          repeat: settings.repeat === "one" ? "all" : settings.repeat,
+        });
+        if (next === -1 || next === currentIndex || consecutivePlaybackErrors >= playlist.length) {
+          consecutivePlaybackErrors = 0;
+          stopAtEndOfQueue();
           return;
         }
+        goToIndex(next);
+      }
 
-        if (currentIndex < playlist.length - 1) {
-          currentIndex++;
-          flowIndex = currentIndex;
-          loadAndPlay(currentIndex);
-          if (currentNav().view === "coverflow") updateCoverFlow();
-        } else if (settings.repeat === "all") {
-          currentIndex = 0;
-          flowIndex = 0;
-          loadAndPlay(0);
-          if (currentNav().view === "coverflow") updateCoverFlow();
+      function handleNativeAudioError() {
+        const track = playlist[currentIndex];
+        if (!isCurrentNativeSource(track)) return;
+        const resumeAt = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+        console.warn("Audio error:", audio.error && audio.error.code, track.title);
+        if (track.type === "youtube") {
+          track.streamFailures = (track.streamFailures || 0) + 1;
+          if (track.streamFailures === 1) {
+            // Signed stream URLs expire (e.g. after a long pause): refresh it.
+            streamResolver.invalidate(track.ytId);
+            startYoutubeTrack(track, { force: true, resumeAt });
+            return;
+          }
+          if (track.streamFailures === 2 && !track.noCors) {
+            // Some proxies omit CORS headers; play without visualizer access.
+            track.noCors = true;
+            playNativeSource(track, track.streamUrl, { resumeAt });
+            return;
+          }
+          track.streamFailures = 0;
+          if (!document.hidden) {
+            fallbackToEmbed(track, resumeAt);
+            refreshTrackUI();
+            return;
+          }
+          showStatusToast("Stream unavailable");
         } else {
-          isPlaying = false;
-          setPlayStateIndicator("stopped");
-          if (currentNav().view === "menu") renderCurrentView();
+          showStatusToast("Can't play this file");
         }
+        isPlaying = false;
+        setPlayStateIndicator("paused");
+        skipAfterError();
       }
 
       function nextTrack() {
         if (!playlist.length) return;
-        if (settings.playOrder === "shuffle" && playlist.length > 1) {
-          currentIndex = pickNextShuffleIndex();
-        } else {
-          currentIndex = (currentIndex + 1) % playlist.length;
-        }
-        flowIndex = currentIndex;
-        loadAndPlay(currentIndex);
-        if (currentNav().view === "coverflow") updateCoverFlow();
+        goToIndex(PlaybackQueue.nextIndex(queueArgs(false)));
       }
 
       function prevTrack() {
         if (!playlist.length) return;
-        currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
-        flowIndex = currentIndex;
-        loadAndPlay(currentIndex);
-        if (currentNav().view === "coverflow") updateCoverFlow();
+        // Like most music players: restart the song unless it just began.
+        const state = getPlaybackPosition();
+        if (state && Number.isFinite(state.position) && state.position > 3) {
+          seekPlayback(0);
+          return;
+        }
+        goToIndex(PlaybackQueue.previousIndex({ length: playlist.length, current: currentIndex }));
       }
 
+      // Native audio events drive state for local files and YouTube streams.
+      // Events from any other source (e.g. the unlock clip) are ignored.
       audio.addEventListener("play", () => {
-        if (playlist[currentIndex]?.type !== "local" || audio.paused) return;
+        if (!isCurrentNativeSource(playlist[currentIndex]) || audio.paused) return;
         isPlaying = true;
         setPlayStateIndicator("playing");
         updateMediaPosition();
         if (currentNav().view === "menu") renderCurrentView();
       });
+      audio.addEventListener("playing", () => {
+        const track = playlist[currentIndex];
+        if (!isCurrentNativeSource(track)) return;
+        consecutivePlaybackErrors = 0;
+        track.streamFailures = 0;
+        connectCaptureSource();
+        prefetchUpcoming();
+      });
       audio.addEventListener("pause", () => {
-        if (playlist[currentIndex]?.type !== "local" || !audio.paused) return;
+        if (!isCurrentNativeSource(playlist[currentIndex]) || !audio.paused) return;
         isPlaying = false;
         setPlayStateIndicator("paused");
         updateMediaPosition();
         if (currentNav().view === "menu") renderCurrentView();
       });
       audio.addEventListener("ended", () => {
-        if (playlist[currentIndex]?.type === "local") handleTrackEnded();
+        if (isCurrentNativeSource(playlist[currentIndex])) handleTrackEnded();
       });
+      audio.addEventListener("error", handleNativeAudioError);
       for (const eventName of ["loadedmetadata", "durationchange", "timeupdate", "seeked"]) {
         audio.addEventListener(eventName, () => {
-          if (playlist[currentIndex]?.type === "local") updateMediaPosition();
+          if (isCurrentNativeSource(playlist[currentIndex])) updateMediaPosition();
         });
+      }
+
+      // iOS only lets a media element play without a tap once it has played
+      // from a tap. Play a short silent clip on the first tap so later
+      // asynchronous starts (after a stream resolves, or the next song in the
+      // background) are allowed.
+      const SILENT_SRC = (() => {
+        const samples = 800; // 0.1 s of 8-bit mono silence at 8 kHz
+        const bytes = new Uint8Array(44 + samples);
+        const view = new DataView(bytes.buffer);
+        const ascii = (offset, text) => [...text].forEach((ch, i) => bytes[offset + i] = ch.charCodeAt(0));
+        ascii(0, "RIFF"); view.setUint32(4, 36 + samples, true); ascii(8, "WAVE");
+        ascii(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 8000, true);
+        view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+        ascii(36, "data"); view.setUint32(40, samples, true);
+        bytes.fill(128, 44);
+        let binary = "";
+        bytes.forEach((b) => binary += String.fromCharCode(b));
+        return "data:audio/wav;base64," + btoa(binary);
+      })();
+      let nativeAudioUnlocked = false;
+
+      function unlockNativeAudio() {
+        if (nativeAudioUnlocked) return;
+        const src = audio.getAttribute("src");
+        if (src && src !== SILENT_SRC) {
+          nativeAudioUnlocked = true; // A song was started from a tap.
+          return;
+        }
+        try {
+          if (!src) audio.src = SILENT_SRC;
+          const cleanup = () => {
+            if (audio.getAttribute("src") !== SILENT_SRC) return;
+            audio.pause();
+            audio.removeAttribute("src");
+            audio.load();
+          };
+          const result = audio.play();
+          if (result && typeof result.then === "function") {
+            result.then(() => { nativeAudioUnlocked = true; cleanup(); }, cleanup);
+          } else {
+            nativeAudioUnlocked = true;
+            cleanup();
+          }
+        } catch (error) {}
+      }
+
+      function onUserActivation() {
+        unlockNativeAudio();
+        if (!retryPlayOnGesture) return;
+        retryPlayOnGesture = false;
+        const track = playlist[currentIndex];
+        if (isCurrentNativeSource(track) && audio.paused) playLocalAudio(track);
+      }
+      for (const eventName of ["pointerup", "touchend", "click", "keydown"]) {
+        document.addEventListener(eventName, onUserActivation, { capture: true });
       }
 
       // --- NON-INTRUSIVE LOCAL FILES & BULK YOUTUBE / PLAYLIST IMPORTER ---
@@ -3388,14 +3542,8 @@
           if (tracksNeedingMetadata.includes(playlist[currentIndex])) updateMediaMetadata();
         }
 
-        // Pre-analyze Audio DNA for the first newly added track in the background
-        if (tracksToAdd[0]) {
-          analyzeTrackAudioDNA(
-            tracksToAdd[0],
-            tracksToAdd[0].title,
-            tracksToAdd[0].artist,
-          );
-        }
+        // The newly added songs may come next in the queue.
+        if (isPlaying) prefetchUpcoming();
       });
 
       // --- HARDWARE BUTTON & WHEEL EVENT ROUTING ---
@@ -3434,7 +3582,7 @@
             const track = playlist[currentIndex];
             playClickSound();
             if (
-              track.type === "youtube" &&
+              usesEmbed(track) &&
               ytPlayer &&
               isYtReady &&
               typeof ytPlayer.getCurrentTime === "function"
@@ -3445,8 +3593,7 @@
               ytPlayer.seekTo(target, true);
               lastRawYtTime = target;
               lastYtSyncPerf = performance.now();
-              if (isShadowStreamActive) shadowAudio.currentTime = target;
-            } else if (track.type === "local" && isFinite(audio.duration)) {
+            } else if (isCurrentNativeSource(track) && isFinite(audio.duration)) {
               audio.currentTime = Math.max(
                 0,
                 Math.min(audio.duration, audio.currentTime + dir * 5),

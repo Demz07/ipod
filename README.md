@@ -12,9 +12,25 @@ Installation options and availability vary by browser and device. Once loaded on
 
 ## Background playback
 
-Start a local song while the page is open. On supported browsers and devices, playback can continue when you switch apps or lock the screen; lock-screen and headset controls can play, pause, skip, and seek where supported. The app suspends its optional Web Audio visualizer and click-sound context while a local song is backgrounded, leaving native audio playback alone, and restores it when the app becomes visible. This is a best-effort compatibility measure, not a guarantee that a browser or device will continue playback. Keep the tab or installed app running: closing it, force-quitting it, or having the operating system terminate it stops playback. Browsers and operating systems can also suspend background playback, so behavior varies by device. YouTube tracks use the embedded YouTube player and may stop in the background due to browser or YouTube restrictions; this app cannot override those restrictions. The silent YouTube visualizer stream pauses in the background so it does not compete with playback. On browsers without native audio-stream capture, the local-song visualizer uses a decorative animation instead of live frequency analysis.
+Songs keep playing when you switch apps or lock the screen, like a music app. Every song — local files and YouTube songs — plays through one native audio element, which phones allow to continue in the background. Lock-screen, notification, and headset controls can play, pause, skip, and seek where supported. Previous restarts the current song if it has played for more than 3 seconds.
 
-On Android, start a local song in Chrome or the installed app, then switch apps or lock the screen without closing it. If it stops, check that the browser or installed app is allowed to run in the background and that battery optimization is not restricting it. Use the device's media notification to resume if needed. Exact settings vary by phone and browser.
+- **YouTube songs** are played as audio-only streams, found through public Piped/Invidious servers (configured in `youtube-stream.js`). The Now Playing screen shows **YouTube • Background Audio** when this works.
+- **Gapless queue in the background:** while a song plays, the next YouTube song's stream is looked up in advance (including the next shuffle pick), so the next song starts instantly when the current one ends — the app never goes silent between songs, which is when phones usually stop background audio.
+- **Automatic recovery:** an expired or broken stream link is refreshed once; a song that still cannot play (or a local file in an unsupported format) is skipped instead of leaving the player stuck.
+- **Video mode fallback:** if no stream server answers, the song plays in the embedded YouTube player and the screen shows **YouTube Video • Keep App Open**. Phones pause that player in the background, so these songs only play while the app is visible. Removed or embed-blocked videos are skipped.
+- The optional visualizer and click sounds are suspended while the app is hidden and restored when you return; they never control the music.
+
+Keep the tab or installed app running: closing it, force-quitting it, or the operating system terminating it stops playback. On Android, if playback stops in the background, allow the browser or installed app to run in the background and turn off battery optimization for it. On iPhone, start the first song with a tap; after that, songs continue on their own.
+
+**Privacy and reliability:** looking up a stream sends the YouTube video ID to the public Piped/Invidious servers listed in `youtube-stream.js`, and audio is streamed through them. These are third-party services that can be slow or offline; edit `DEFAULT_SOURCES` to use instances you trust or host yourself. Streaming YouTube audio outside the official player may conflict with YouTube's Terms of Service.
+
+## Development
+
+Serve the folder over HTTP (for example `python3 -m http.server 8000`) and open `http://localhost:8000`. Run the tests with Node 18+:
+
+```sh
+node --test tests/*.cjs
+```
 
 ## Saved YouTube songs
 
