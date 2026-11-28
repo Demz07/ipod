@@ -122,3 +122,83 @@ test('saves web songs with their position and restores the mixed order', () => {
   storage.setItem(web.LIBRARY_KEY, '{bad');
   assert.throws(() => web.read(storage));
 });
+
+// ---- Deezer / Jamendo (JSONP) -------------------------------------------
+function jsonpRouter(routes) {
+  const calls = [];
+  const jsonp = async (url) => {
+    calls.push(url);
+    for (const [pattern, data] of routes) if (pattern.test(url)) return typeof data === 'function' ? data(url) : data;
+    throw new Error('Network error');
+  };
+  return { jsonp, calls };
+}
+const EXP = 1795866880;
+const dzTrack = (id, title, extra = {}) => ({
+  id, readable: true, title, duration: 226,
+  preview: `https://cdnt-preview.dzcdn.net/api/1/1/0/4/9/0/049e.mp3?hdnea=exp=${EXP}~acl=/api/1/1/0/4/9/0/049e.mp3*~data=user_id=0,application_id=42~hmac=03a6`,
+  artist: { id: 12246, name: 'Taylor Swift' },
+  album: { id: 829966251, title: 'The Life of a Showgirl', cover_medium: 'https://cdn-images.dzcdn.net/images/cover/d0/250x250.jpg', cover_big: 'https://cdn-images.dzcdn.net/images/cover/d0/500x500.jpg' },
+  type: 'track', ...extra,
+});
+
+test('Deezer search maps previews, keeps the id and expiry, skips songs without a preview', async () => {
+  const { jsonp, calls } = jsonpRouter([[/api\.deezer\.com\/search\?q=taylor%20swift&limit=50&output=jsonp$/, {
+    data: [dzTrack(3579685431, 'The Fate of Ophelia'), dzTrack(1, 'No preview', { preview: '' }), dzTrack(2, 'Blocked', { readable: false })],
+  }]]);
+  const tracks = await web.deezer.search(jsonp, 'taylor swift');
+  assert.equal(calls.length, 1);
+  assert.equal(tracks.length, 1);
+  assert.deepEqual({ ...tracks[0], url: undefined }, {
+    url: undefined, title: 'The Fate of Ophelia', artist: 'Taylor Swift', cover: 'https://cdn-images.dzcdn.net/images/cover/d0/500x500.jpg',
+    source: 'Deezer', deezerId: '3579685431', expires: EXP * 1000,
+  });
+  assert.equal(web.deezer.isFresh(tracks[0], EXP * 1000 - 120000), true);
+  assert.equal(web.deezer.isFresh(tracks[0], EXP * 1000 - 30000), false, 'less than a minute left');
+});
+
+test('Deezer artists, artist top songs, genres and charts', async () => {
+  const { jsonp, calls } = jsonpRouter([
+    [/\/search\/artist\?q=shakira/, { data: [{ id: 160, name: 'Shakira', nb_fan: 12345678, picture_big: 'https://cdn-images.dzcdn.net/a/500.jpg' }] }],
+    [/\/artist\/160\/top\?limit=50/, { data: [dzTrack(4015341011, 'Dai Dai')] }],
+    [/\/genre\?output=jsonp/, { data: [{ id: 0, name: 'All' }, { id: 132, name: 'Pop', picture_big: 'https://cdn-images.dzcdn.net/g/500.jpg' }] }],
+    [/\/chart\/132\/tracks\?limit=50/, { data: [dzTrack(5, 'Pop Hit')] }],
+  ]);
+  const [artist] = await web.deezer.artists(jsonp, 'shakira');
+  assert.deepEqual(artist, { kind: 'artist', id: '160', title: 'Shakira', artist: '12,345,678 fans', cover: 'https://cdn-images.dzcdn.net/a/500.jpg', source: 'Deezer' });
+  assert.equal((await web.deezer.artistTop(jsonp, artist.id))[0].title, 'Dai Dai');
+  const genres = await web.deezer.genres(jsonp);
+  assert.deepEqual(genres.map((g) => g.title), ['Pop'], '"All" is left out');
+  assert.equal((await web.deezer.chart(jsonp, genres[0].id))[0].title, 'Pop Hit');
+  assert(calls.every((u) => u.includes('output=jsonp')));
+});
+
+test('Deezer errors (e.g. removed songs) reject', async () => {
+  const { jsonp } = jsonpRouter([[/\/track\/999/, { error: { type: 'DataException', message: 'no data', code: 800 } }]]);
+  await assert.rejects(web.deezer.track(jsonp, '999'), /no data/);
+});
+
+test('Jamendo search uses the key, returns full songs, and explains a bad key', async () => {
+  const { jsonp, calls } = jsonpRouter([
+    [/client_id=good/, { headers: { status: 'success', code: 0 }, results: [
+      { id: '1848357', name: 'mañana será tarde', artist_name: 'fankel', image: 'https://usercontent.jamendo.com?type=album&id=368084&width=300', audio: 'https://prod-1.storage.jamendo.com/?trackid=1848357&format=mp32&from=app-good' },
+      { id: '2', name: 'no audio', artist_name: 'x', audio: '' },
+    ] }],
+    [/client_id=bad/, { headers: { status: 'failed', code: 5, error_message: 'Jamendo Api Invalid Client Id Error: Your credential is not authorized.' }, results: [] }],
+  ]);
+  const tracks = await web.jamendo.search(jsonp, ' good ', 'acoustic rock');
+  assert.deepEqual(tracks, [{ url: 'https://prod-1.storage.jamendo.com/?trackid=1848357&format=mp32&from=app-good', title: 'mañana será tarde', artist: 'fankel', cover: 'https://usercontent.jamendo.com?type=album&id=368084&width=300', source: 'Jamendo' }]);
+  assert.match(calls[0], /^https:\/\/api\.jamendo\.com\/v3\.0\/tracks\/\?client_id=good&format=json&.*&search=acoustic%20rock$/);
+  await web.jamendo.genre(jsonp, 'good', 'rock');
+  assert.match(calls[1], /tags=rock&featured=1&groupby=artist_id/);
+  await assert.rejects(web.jamendo.popular(jsonp, 'bad'), /Jamendo key not accepted/);
+  await assert.rejects(web.jamendo.popular(jsonp, ''), /Jamendo key needed/);
+  assert.equal(web.jamendo.genres().length, 12);
+});
+
+test('saved Deezer songs keep their id so a fresh preview can be fetched later', () => {
+  const data = new Map();
+  const storage = { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, v) };
+  web.write(storage, [{ type: 'web', url: 'https://cdnt-preview.dzcdn.net/x.mp3?hdnea=exp=1', title: 'Song', source: 'Deezer', deezerId: '3579685431', coverUrl: '' }]);
+  assert.equal(web.read(storage)[0].track.deezerId, '3579685431');
+});
