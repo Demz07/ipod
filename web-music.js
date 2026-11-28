@@ -3,6 +3,8 @@
 //   - Audius (audius.co): free streaming music, open API, no key needed
 //   - Internet Archive (archive.org): free/public-domain albums and live sets
 //   - Radio Browser (radio-browser.info): thousands of live internet radio stations
+//   - Deezer (deezer.com): famous artists, 30-second previews, no key needed
+//   - Jamendo (jamendo.com): full songs by independent artists (free key)
 //   - Direct audio links (.mp3/.m4a/.ogg/... URLs, archive.org and audius.co pages)
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
@@ -184,6 +186,157 @@
     },
   };
 
+  // ---- JSONP --------------------------------------------------------------
+  // Deezer sends no CORS headers, so browsers can only read it with JSONP
+  // (a <script> tag calling a named function). Jamendo supports it as well.
+  let jsonpCounter = 0;
+  function jsonp(url, { timeoutMs = 9000, param = "callback" } = {}) {
+    return new Promise((resolve, reject) => {
+      const doc = globalThis.document;
+      const name = `__ipodJsonp${Date.now().toString(36)}${jsonpCounter++}`;
+      const script = doc.createElement("script");
+      let done = false;
+      const finish = (error, data) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        // Leave a no-op behind briefly so a late response doesn't throw.
+        globalThis[name] = () => {};
+        setTimeout(() => { delete globalThis[name]; }, 60000);
+        script.remove();
+        if (error) reject(error);
+        else resolve(data);
+      };
+      const timer = setTimeout(() => finish(new Error("Timed out")), timeoutMs);
+      globalThis[name] = (data) => finish(null, data);
+      script.onerror = () => finish(new Error("Network error"));
+      script.src = `${url}${url.includes("?") ? "&" : "?"}${param}=${name}`;
+      doc.head.appendChild(script);
+    });
+  }
+
+  // ---- Deezer -------------------------------------------------------------
+  // Preview links are signed and expire about 15 minutes after they are
+  // issued, so tracks keep their Deezer id and get a fresh link before playing.
+  const DEEZER_API = "https://api.deezer.com";
+
+  function previewExpiry(url) {
+    const match = /exp=(\d{9,})/.exec(String(url || ""));
+    return match ? Number(match[1]) * 1000 : 0;
+  }
+
+  function deezerTrack(t) {
+    const url = httpsOnly(t && t.preview);
+    if (!url || !t.id || t.readable === false) return null;
+    const album = t.album || {};
+    return {
+      url,
+      title: text(t.title, "Untitled"),
+      artist: text(t.artist && t.artist.name, "Deezer"),
+      cover: httpsOnly(album.cover_big || album.cover_medium || ""),
+      source: "Deezer",
+      deezerId: String(t.id),
+      expires: previewExpiry(url),
+    };
+  }
+
+  async function deezerGet(jsonpImpl, path) {
+    const data = await jsonpImpl(`${DEEZER_API}${path}${path.includes("?") ? "&" : "?"}output=jsonp`);
+    if (!data || data.error) throw new Error((data && data.error && data.error.message) || "Deezer error");
+    return data;
+  }
+
+  async function deezerTracks(jsonpImpl, path) {
+    const data = await deezerGet(jsonpImpl, path);
+    const list = Array.isArray(data.data) ? data.data : [];
+    return list.map(deezerTrack).filter(Boolean).slice(0, MAX_RESULTS);
+  }
+
+  const deezer = {
+    search: (jsonpImpl, query) => deezerTracks(jsonpImpl, `/search?q=${enc(query)}&limit=50`),
+    async artists(jsonpImpl, query) {
+      const data = await deezerGet(jsonpImpl, `/search/artist?q=${enc(query)}&limit=25`);
+      return (Array.isArray(data.data) ? data.data : [])
+        .filter((a) => a && a.id)
+        .map((a) => ({
+          kind: "artist",
+          id: String(a.id),
+          title: text(a.name, "Artist"),
+          artist: Number.isFinite(a.nb_fan) ? `${a.nb_fan.toLocaleString("en-US")} fans` : "Artist",
+          cover: httpsOnly(a.picture_big || a.picture_medium || ""),
+          source: "Deezer",
+        }));
+    },
+    artistTop: (jsonpImpl, id) => deezerTracks(jsonpImpl, `/artist/${enc(id)}/top?limit=50`),
+    chart: (jsonpImpl, genreId = 0) => deezerTracks(jsonpImpl, `/chart/${enc(genreId)}/tracks?limit=50`),
+    async genres(jsonpImpl) {
+      const data = await deezerGet(jsonpImpl, "/genre");
+      return (Array.isArray(data.data) ? data.data : [])
+        .filter((g) => g && g.id) // id 0 is "All" (= Top Charts)
+        .map((g) => ({
+          kind: "genre",
+          id: String(g.id),
+          title: text(g.name, "Genre"),
+          artist: "Top Songs",
+          cover: httpsOnly(g.picture_big || g.picture_medium || ""),
+          source: "Deezer",
+        }));
+    },
+    // A fresh preview link for a saved track.
+    async track(jsonpImpl, id) {
+      const track = deezerTrack(await deezerGet(jsonpImpl, `/track/${enc(id)}`));
+      if (!track) throw new Error("No preview for this song");
+      return track;
+    },
+    // True when the preview link is valid for at least another minute.
+    isFresh: (track, now = Date.now()) => previewExpiry(track && track.url) > now + 60000,
+  };
+
+  // ---- Jamendo ------------------------------------------------------------
+  // Needs a free client id from devportal.jamendo.com (entered in the app).
+  const JAMENDO_API = "https://api.jamendo.com/v3.0/tracks/";
+  const JAMENDO_GENRES = [
+    ["pop", "Pop"], ["rock", "Rock"], ["hiphop", "Hip-Hop"], ["electronic", "Electronic"],
+    ["jazz", "Jazz"], ["lounge", "Lounge"], ["relaxation", "Relaxation"], ["classical", "Classical"],
+    ["songwriter", "Singer-Songwriter"], ["world", "World"], ["metal", "Metal"], ["soundtrack", "Soundtrack"],
+  ];
+
+  function jamendoTrack(t) {
+    const url = httpsOnly(t && t.audio);
+    if (!url) return null;
+    return {
+      url,
+      title: text(t.name, "Untitled"),
+      artist: text(t.artist_name, "Jamendo"),
+      cover: httpsOnly(t.image || t.album_image || ""),
+      source: "Jamendo",
+    };
+  }
+
+  async function jamendoTracks(jsonpImpl, clientId, params) {
+    const key = String(clientId || "").trim();
+    if (!key) throw new Error("Jamendo key needed");
+    const url =
+      `${JAMENDO_API}?client_id=${enc(key)}&format=json&limit=${MAX_RESULTS}` +
+      `&type=${enc("single albumtrack")}&audioformat=mp32&imagesize=300&${params}`;
+    const data = await jsonpImpl(url);
+    const headers = (data && data.headers) || {};
+    if (headers.status !== "success") {
+      throw new Error(headers.code === 5 ? "Jamendo key not accepted" : text(headers.error_message, "Jamendo error"));
+    }
+    return (Array.isArray(data.results) ? data.results : []).map(jamendoTrack).filter(Boolean);
+  }
+
+  const jamendo = {
+    // Free text: matches song, album and artist names, genres and instruments.
+    search: (jsonpImpl, clientId, query) => jamendoTracks(jsonpImpl, clientId, `search=${enc(query)}`),
+    popular: (jsonpImpl, clientId) => jamendoTracks(jsonpImpl, clientId, "order=popularity_week"),
+    // Jamendo's recommended genre charts: featured tracks, one per artist.
+    genre: (jsonpImpl, clientId, tag) =>
+      jamendoTracks(jsonpImpl, clientId, `tags=${enc(tag)}&featured=1&groupby=artist_id&boost=popularity_month`),
+    genres: () => JAMENDO_GENRES.map(([id, title]) => ({ kind: "genre", id, title, artist: "Featured Songs", cover: "", source: "Jamendo" })),
+  };
+
   // ---- Pasted links -------------------------------------------------------
   function parseLinks(input) {
     const result = { direct: [], archive: [], audius: [] };
@@ -226,6 +379,7 @@
       source: text(track.source, "Web"),
       live: track.live === true,
       noCors: track.noCors === true,
+      ...(/^\d{1,20}$/.test(String(track.deezerId || "")) ? { deezerId: String(track.deezerId) } : {}),
     };
   }
   const validUrl = (url) => typeof url === "string" && /^https:\/\//i.test(url);
@@ -259,5 +413,5 @@
     return result;
   }
 
-  return { APP_NAME, LIBRARY_KEY, audius, archive, radio, parseLinks, read, write, merge };
+  return { APP_NAME, LIBRARY_KEY, jsonp, audius, archive, radio, deezer, jamendo, parseLinks, read, write, merge };
 });

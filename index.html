@@ -2437,11 +2437,45 @@
           return {
             title: "Search Music",
             items: [
+              { label: "Deezer", chevron: true, iconKey: "mic", caption: "Hits • 30s Clips", action: () => pushMenu("web-deezer") },
+              { label: "Jamendo", chevron: true, iconKey: "songs", caption: "Full Songs", action: () => pushMenu("web-jamendo") },
               { label: "Search Audius", chevron: true, iconKey: "music", caption: "Free Music", action: () => openWebModal("audius") },
               { label: "Audius Trending", chevron: true, iconKey: "nowplaying", caption: "Top Songs Now", action: () => showWebResults("Trending", () => WebMusic.audius.trending(webFetch), "nowplaying") },
               { label: "Internet Archive", chevron: true, iconKey: "coverflow", caption: "Free Albums", action: () => openWebModal("archive") },
               { label: "Internet Radio", chevron: true, iconKey: "sound", caption: "Live Stations", action: () => openWebModal("radio") },
               { label: "Add Audio Link", chevron: false, iconKey: "folder", caption: "MP3 / M4A Links", action: () => openWebModal("link") },
+            ],
+          };
+        }
+
+        if (menuId === "web-deezer") {
+          return {
+            title: "Deezer",
+            items: [
+              { label: "Search Songs", chevron: true, iconKey: "music", caption: "Any Artist • 30s", action: () => openWebModal("deezer") },
+              { label: "Search Artists", chevron: true, iconKey: "mic", caption: "Top Songs", action: () => openWebModal("deezerArtists") },
+              { label: "Top Charts", chevron: true, iconKey: "nowplaying", caption: "Hits Right Now", action: () => showWebResults("Top Charts", () => WebMusic.deezer.chart(webJsonp, 0), "nowplaying") },
+              { label: "Genres", chevron: true, iconKey: "coverflow", caption: "Charts by Genre", action: () => showWebResults("Genres", () => WebMusic.deezer.genres(webJsonp), "coverflow") },
+            ],
+          };
+        }
+
+        if (menuId === "web-jamendo") {
+          if (!jamendoKey()) {
+            return {
+              title: "Jamendo",
+              items: [
+                { label: "Set Up Jamendo", chevron: false, iconKey: "settings", caption: "Free Key Needed", action: () => openWebModal("jamendoKey") },
+              ],
+            };
+          }
+          return {
+            title: "Jamendo",
+            items: [
+              { label: "Search Jamendo", chevron: true, iconKey: "music", caption: "Artist • Genre", action: () => openWebModal("jamendo") },
+              { label: "Popular This Week", chevron: true, iconKey: "nowplaying", caption: "Full Songs", action: () => showWebResults("Popular", () => WebMusic.jamendo.popular(webJsonp, jamendoKey()), "nowplaying") },
+              { label: "Genres", chevron: true, iconKey: "coverflow", caption: "Featured Songs", action: () => showWebResults("Genres", async () => WebMusic.jamendo.genres(), "coverflow") },
+              { label: "Jamendo Key", chevron: false, iconKey: "settings", caption: "Change Key", action: () => openWebModal("jamendoKey") },
             ],
           };
         }
@@ -2457,19 +2491,20 @@
           if (!nav.results.length) {
             return { title: nav.title, items: [{ label: "No results", iconKey: nav.iconKey, caption: "Try another search", action: () => goBack() }] };
           }
-          const tracks = nav.results.filter((r) => r.kind !== "album");
+          const tracks = nav.results.filter((r) => !r.kind);
           const items = [];
           if (tracks.length > 1) {
             items.push({ label: `Add All (${tracks.length})`, iconKey: "songs", caption: "Queue All Songs", action: () => addWebTracks(tracks) });
           }
           for (const result of nav.results) {
-            if (result.kind === "album") {
+            if (result.kind) {
+              // An album, artist, or genre: opens its own list of songs.
               items.push({
                 label: result.title, chevron: true, art: result.cover || null, iconKey: nav.iconKey, caption: result.artist,
-                action: () => showWebResults(result.title, () => WebMusic.archive.album(webFetch, result.id), "coverflow"),
+                action: () => openWebGroup(result),
               });
             } else {
-              const playingNow = playlist[currentIndex] && playlist[currentIndex].url === result.url;
+              const playingNow = playlist[currentIndex] && webKey(playlist[currentIndex]) === webKey(result);
               items.push({
                 label: result.title, art: result.cover || null, iconKey: nav.iconKey, caption: result.artist,
                 chevronSvg: playingNow ? (isPlaying ? INLINE_SVGS.speaker : INLINE_SVGS.pause) : "",
@@ -2861,7 +2896,7 @@
             npSource.textContent = "YouTube Video • Keep App Open";
           }
         } else if (track.type === "web") {
-          npSource.textContent = `${track.source} • ${track.live ? "Live Radio" : "Background Audio"}`;
+          npSource.textContent = `${track.source} • ${track.live ? "Live Radio" : track.deezerId ? "30s Preview" : "Background Audio"}`;
         } else {
           npSource.textContent = "Local Audio";
         }
@@ -3078,6 +3113,8 @@
 
         if (track.type === "youtube") {
           startYoutubeTrack(track);
+        } else if (track.type === "web") {
+          startWebTrack(track);
         } else {
           playbackToken++;
           stopEmbedPlayer();
@@ -3085,6 +3122,52 @@
         }
 
         refreshTrackUI();
+      }
+
+      // Hosts that failed with CORS once start without it (skips a retry).
+      const noCorsHosts = new Set();
+      const hostOf = (url) => { try { return new URL(url).hostname; } catch (error) { return ""; } };
+
+      function startWebTrack(track, { resumeAt = 0 } = {}) {
+        const token = ++playbackToken;
+        stopEmbedPlayer();
+        if (noCorsHosts.has(hostOf(track.url))) track.noCors = true;
+        if (!track.deezerId || WebMusic.deezer.isFresh(track)) {
+          playNativeSource(track, track.url, { resumeAt });
+          return;
+        }
+        // Deezer preview links expire after ~15 minutes: get a fresh one.
+        audio.pause();
+        isPlaying = true;
+        setPlayStateIndicator("playing");
+        refreshDeezerTrack(track).then(
+          () => {
+            if (token !== playbackToken || playlist[currentIndex] !== track) return;
+            if (noCorsHosts.has(hostOf(track.url))) track.noCors = true;
+            playNativeSource(track, track.url, { resumeAt });
+          },
+          (error) => {
+            if (token !== playbackToken || playlist[currentIndex] !== track) return;
+            console.warn("No Deezer preview for", track.title, error);
+            showStatusToast("Preview unavailable");
+            isPlaying = false;
+            setPlayStateIndicator("paused");
+            skipAfterError();
+          },
+        );
+      }
+
+      function refreshDeezerTrack(track) {
+        if (!track.deezerRefresh) {
+          track.deezerRefresh = WebMusic.deezer.track(webJsonp, track.deezerId)
+            .then((fresh) => {
+              track.url = fresh.url;
+              track.expires = fresh.expires;
+              return track;
+            })
+            .finally(() => { track.deezerRefresh = null; });
+        }
+        return track.deezerRefresh;
       }
 
       function togglePlay() {
@@ -3183,6 +3266,10 @@
         if (next !== currentIndex && upcoming && upcoming.type === "youtube") {
           streamResolver.resolve(upcoming.ytId).catch(() => {});
         }
+        // Refresh the next Deezer preview now so the switch is instant later.
+        if (next !== currentIndex && upcoming && upcoming.type === "web" && upcoming.deezerId && !WebMusic.deezer.isFresh(upcoming)) {
+          refreshDeezerTrack(upcoming).catch(() => {});
+        }
       }
 
       function handleTrackEnded() {
@@ -3253,9 +3340,15 @@
           }
           showStatusToast("Stream unavailable");
         } else if (track.type === "web") {
+          if (track.deezerId && !WebMusic.deezer.isFresh(track)) {
+            // The preview link expired (e.g. after a long pause).
+            startWebTrack(track, { resumeAt });
+            return;
+          }
           if (!track.noCors) {
             // The host may not send CORS headers: play without visualizer access.
             track.noCors = true;
+            noCorsHosts.add(hostOf(track.url));
             playNativeSource(track, track.url, { resumeAt: track.live ? 0 : resumeAt });
             return;
           }
@@ -3541,6 +3634,7 @@
           source: info.source || "Web",
           live: !!info.live,
           noCors: !!info.noCors,
+          deezerId: info.deezerId || null,
         };
       }
 
@@ -3603,6 +3697,42 @@
       // These sources are plain audio files/streams, so they play through the
       // native audio element and keep playing in the background.
       const webFetch = (url, options) => fetch(url, options);
+      const webJsonp = (url) => WebMusic.jsonp(url);
+      // Deezer links change (they expire), so Deezer songs match by id.
+      const webKey = (track) => (track && track.deezerId ? `deezer:${track.deezerId}` : track && track.url);
+
+      const JAMENDO_KEY_STORAGE = "ipod-classic-jamendo-key";
+      function jamendoKey() {
+        try { return (window.localStorage.getItem(JAMENDO_KEY_STORAGE) || "").trim(); } catch (error) { return ""; }
+      }
+
+      async function saveJamendoKey(key) {
+        showStatusToast("Checking key…");
+        try {
+          await WebMusic.jamendo.popular(webJsonp, key);
+        } catch (error) {
+          showStatusToast(/not accepted/.test(error.message) ? "Key not accepted" : "Couldn't check key");
+          return;
+        }
+        try { window.localStorage.setItem(JAMENDO_KEY_STORAGE, key); } catch (error) {
+          showStatusToast("Save failed");
+          return;
+        }
+        showStatusToast("Jamendo Ready");
+        renderCurrentView();
+      }
+
+      function openWebGroup(result) {
+        if (result.kind === "album") {
+          showWebResults(result.title, () => WebMusic.archive.album(webFetch, result.id), "coverflow");
+        } else if (result.kind === "artist") {
+          showWebResults(result.title, () => WebMusic.deezer.artistTop(webJsonp, result.id), "mic");
+        } else if (result.kind === "genre" && result.source === "Jamendo") {
+          showWebResults(result.title, () => WebMusic.jamendo.genre(webJsonp, jamendoKey(), result.id), "songs");
+        } else if (result.kind === "genre") {
+          showWebResults(result.title, () => WebMusic.deezer.chart(webJsonp, result.id), "nowplaying");
+        }
+      }
 
       function anyModalOpen() {
         return ytModal.classList.contains("active") || webModal.classList.contains("active");
@@ -3627,6 +3757,31 @@
           sub: "Live stations • plays in the background",
           run: (q) => showWebResults(q || "Top Stations", () => WebMusic.radio.search(webFetch, q), "sound"),
         },
+        deezer: {
+          title: "Search Deezer", badge: "Deezer", button: "Search", single: true,
+          placeholder: "Song or artist",
+          sub: "Famous artists • 30-second previews",
+          run: (q) => showWebResults(q, () => WebMusic.deezer.search(webJsonp, q), "music"),
+        },
+        deezerArtists: {
+          title: "Search Artists", badge: "Deezer", button: "Search", single: true,
+          placeholder: "Artist name",
+          sub: "Pick an artist to see their top songs (30s previews)",
+          run: (q) => showWebResults(q, () => WebMusic.deezer.artists(webJsonp, q), "mic"),
+        },
+        jamendo: {
+          title: "Search Jamendo", badge: "Jamendo", button: "Search", single: true,
+          placeholder: "Artist, song, genre, or mood",
+          sub: "Full songs by independent artists • plays in the background",
+          run: (q) => showWebResults(q, () => WebMusic.jamendo.search(webJsonp, jamendoKey(), q), "music"),
+        },
+        jamendoKey: {
+          title: "Jamendo Key", badge: "Free", button: "Save", single: true,
+          placeholder: "Paste your Jamendo Client ID",
+          sub: "Free: sign up at devportal.jamendo.com, create an app, then copy its Client ID here.",
+          initial: () => jamendoKey(),
+          run: (key) => saveJamendoKey(key),
+        },
         link: {
           title: "Add Audio Link", badge: "Links", button: "Add", single: false,
           placeholder: "Paste .mp3 / .m4a / .ogg links, or archive.org / audius.co pages (one per line)",
@@ -3645,6 +3800,7 @@
         webInput.classList.toggle("single-line", webMode.single);
         webInput.setAttribute("enterkeyhint", webMode.single ? "search" : "enter");
         webGoBtn.textContent = webMode.button;
+        webInput.value = webMode.initial ? webMode.initial() : "";
         webModal.classList.add("active");
         setTimeout(() => webInput.focus(), 50);
       }
@@ -3699,7 +3855,7 @@
         let firstIndex = -1;
         let added = 0;
         for (const info of list) {
-          let index = playlist.findIndex((t) => t.type === "web" && t.url === info.url);
+          let index = playlist.findIndex((t) => t.type === "web" && webKey(t) === webKey(info));
           if (index === -1) {
             playlist.push(createWebTrackObject(info));
             index = playlist.length - 1;

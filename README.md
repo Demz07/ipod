@@ -36,6 +36,8 @@ node --test tests/*.cjs
 
 Choose **Search Music** from the main menu (or **Music**) to add songs from sites that stream plain audio, which keeps playing when you switch apps or lock the screen:
 
+- **Deezer** — search almost any famous artist or song, open an artist's top songs, or browse Top Charts and Genres. Deezer only allows **30-second previews** (shown as "Deezer • 30s Preview"). Preview links expire after about 15 minutes, so the app saves each song's Deezer id and fetches a fresh link right before it plays.
+- **Jamendo** — **full songs** by independent artists. Search by artist, song, genre, or mood, or browse Popular This Week and Genres. Jamendo needs a free key: sign up at [devportal.jamendo.com](https://devportal.jamendo.com), create an app, and paste its **Client ID** into **Search Music → Jamendo → Set Up Jamendo**. The key is checked, then stored only on this device.
 - **Search Audius / Audius Trending** — free streaming music from [Audius](https://audius.co).
 - **Internet Archive** — free and public-domain albums and live shows from [archive.org](https://archive.org). Pick an album, then a song or **Add All**.
 - **Internet Radio** — live stations from [Radio Browser](https://www.radio-browser.info). Leave the search blank for top stations. Only secure (https) stations are listed.
