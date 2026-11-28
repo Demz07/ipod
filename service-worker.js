@@ -1,8 +1,10 @@
-const CACHE_NAME = "ipod-classic-shell-v4";
+const CACHE_NAME = "ipod-classic-shell-v5";
 const SHELL = [
   "./",
   "./index.html",
   "./youtube-library.js",
+  "./youtube-stream.js",
+  "./playback-queue.js",
   "./manifest.webmanifest",
   "./Apple-Logo-Png-Download-768x950.png",
   "./icons/icon-32.png",
@@ -13,7 +15,8 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
+  // Activate immediately so fresh HTML is never paired with stale cached scripts.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -24,7 +27,7 @@ self.addEventListener("activate", (event) => {
           .filter((key) => key.startsWith("ipod-classic-shell-") && key !== CACHE_NAME)
           .map((key) => caches.delete(key)),
       ),
-    ),
+    ).then(() => self.clients.claim()),
   );
 });
 
@@ -40,6 +43,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Only serve precached shell files from the cache. Media and APIs are not cached.
+  // Only serve precached shell files from the cache. Media and APIs are not
+  // cached; cross-origin requests (YouTube audio streams) go straight to the network.
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });
