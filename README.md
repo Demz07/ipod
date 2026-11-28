@@ -32,6 +32,17 @@ Serve the folder over HTTP (for example `python3 -m http.server 8000`) and open 
 node --test tests/*.cjs
 ```
 
+## Search Music (plays in the background)
+
+Choose **Search Music** from the main menu (or **Music**) to add songs from sites that stream plain audio, which keeps playing when you switch apps or lock the screen:
+
+- **Search Audius / Audius Trending** — free streaming music from [Audius](https://audius.co).
+- **Internet Archive** — free and public-domain albums and live shows from [archive.org](https://archive.org). Pick an album, then a song or **Add All**.
+- **Internet Radio** — live stations from [Radio Browser](https://www.radio-browser.info). Leave the search blank for top stations. Only secure (https) stations are listed.
+- **Add Audio Link** — paste direct `.mp3`/`.m4a`/`.ogg` links, or `archive.org/details/…` and `audius.co/…` pages.
+
+Use the wheel to scroll results and the center button to play a song (it opens Now Playing). **Add All** queues every result without interrupting what's playing. Songs added this way are saved on this device like YouTube songs (in the same order) and can be removed with **Delete Songs**. Searching sends your search text to the chosen site, and audio streams directly from it. Some stations or links may be offline; songs that can't play are skipped.
+
 ## Saved YouTube songs
 
 YouTube song IDs, titles, and artists are saved on this device when added and restored when the app reopens. Deleting a YouTube song also removes it from the saved list. The app does not download YouTube audio or video: an internet connection is still required for playback. Local files are not saved and need to be added again after reopening. Storage is separate for different devices and may also be separate between a browser and an installed app, depending on the platform. Clearing site data, uninstalling the app, private browsing, or disabled/full storage can remove or prevent saved entries. If the screen says **Save failed** or **Library unavailable**, the list could not be saved or read; check the browser's storage settings and free space.

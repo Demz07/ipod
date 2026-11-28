@@ -724,6 +724,9 @@
         user-select: text;
         -webkit-user-select: text;
       }
+      .yt-modal-body textarea.single-line {
+        height: 30px;
+      }
       .yt-modal-sub {
         font-size: 8px;
         color: #4f5661;
@@ -1040,6 +1043,24 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Search / link prompt for background-capable web music -->
+              <div class="yt-modal" id="web-modal">
+                <div class="yt-modal-box">
+                  <div class="yt-modal-header">
+                    <span id="web-modal-title">Search Music</span>
+                    <span class="yt-detect-badge" id="web-modal-badge">Audius</span>
+                  </div>
+                  <div class="yt-modal-body">
+                    <textarea id="web-input" class="single-line" enterkeyhint="search"></textarea>
+                    <div class="yt-modal-sub" id="web-modal-sub"></div>
+                    <div class="yt-modal-actions">
+                      <button class="yt-btn yt-btn-cancel" id="web-cancel">Cancel</button>
+                      <button class="yt-btn yt-btn-add" id="web-go">Search</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1088,6 +1109,7 @@
     <script src="./youtube-library.js"></script>
     <script src="./youtube-stream.js"></script>
     <script src="./playback-queue.js"></script>
+    <script src="./web-music.js"></script>
     <script>
       // --- AUTHENTIC 2000s APPLE AQUA / iPOD OS 6th-GEN SKEUOMORPHIC SVG ICON LIBRARY ---
       const AQUA_ICONS = {
@@ -1310,6 +1332,7 @@
       let playlist = [];
       // Do not overwrite storage if reading an existing library failed.
       let youtubeLibraryReadable = false;
+      let webLibraryReadable = false;
       let currentIndex = -1;
       let isPlaying = false;
       let volume = 0.8;
@@ -1359,7 +1382,7 @@
 
       // track.playback for YouTube: null (not started) | "resolving" | "stream" | "embed"
       function usesNativeAudio(track) {
-        return !!track && (track.type === "local" || track.playback === "stream");
+        return !!track && (track.type === "local" || track.type === "web" || track.playback === "stream");
       }
       function usesEmbed(track) {
         return !!track && track.type === "youtube" && track.playback === "embed";
@@ -1412,6 +1435,13 @@
       const ytModalSub = document.getElementById("yt-modal-sub");
       const ytAddBtn = document.getElementById("yt-add");
       const ytCancelBtn = document.getElementById("yt-cancel");
+      const webModal = document.getElementById("web-modal");
+      const webModalTitle = document.getElementById("web-modal-title");
+      const webModalBadge = document.getElementById("web-modal-badge");
+      const webModalSub = document.getElementById("web-modal-sub");
+      const webInput = document.getElementById("web-input");
+      const webGoBtn = document.getElementById("web-go");
+      const webCancelBtn = document.getElementById("web-cancel");
 
       const audio = document.getElementById("audio");
       const fileInput = document.getElementById("file-input");
@@ -1544,28 +1574,50 @@
         }
       }
 
-      function restoreYoutubeLibrary() {
+      // Restore saved YouTube and web songs (in their saved mixed order)
+      // without automatically starting playback.
+      function restoreLibrary() {
+        let youtube = [];
+        let webEntries = [];
+        let ok = true;
         try {
-          const saved = YouTubeLibrary.read(window.localStorage);
-          playlist.push(...saved.map((track) => createYoutubeTrackObject(track.ytId, track.title, track.artist)));
-          if (playlist.length) currentIndex = 0;
+          youtube = YouTubeLibrary.read(window.localStorage).map((t) => createYoutubeTrackObject(t.ytId, t.title, t.artist));
           youtubeLibraryReadable = true;
-          return true;
         } catch (error) {
           console.warn("Could not restore YouTube library:", error);
-          return false;
+          ok = false;
         }
+        try {
+          webEntries = WebMusic.read(window.localStorage);
+          webLibraryReadable = true;
+        } catch (error) {
+          console.warn("Could not restore web library:", error);
+          ok = false;
+        }
+        playlist.push(...WebMusic.merge(youtube, webEntries, createWebTrackObject));
+        if (playlist.length) currentIndex = 0;
+        return ok;
       }
 
-      function saveYoutubeLibrary() {
-        if (!youtubeLibraryReadable) return false;
+      // Saves each library that was readable (never overwrites one that
+      // failed to load). Returns false if any save failed.
+      function saveLibrary() {
+        let ok = true;
         try {
-          YouTubeLibrary.write(window.localStorage, playlist);
-          return true;
+          if (youtubeLibraryReadable) YouTubeLibrary.write(window.localStorage, playlist);
+          else ok = false;
         } catch (error) {
           console.warn("Could not save YouTube library:", error);
-          return false;
+          ok = false;
         }
+        try {
+          if (webLibraryReadable) WebMusic.write(window.localStorage, playlist);
+          else ok = false;
+        } catch (error) {
+          console.warn("Could not save web library:", error);
+          ok = false;
+        }
+        return ok;
       }
 
       // --- PLAYBACK MODE HELPERS ---
@@ -2300,6 +2352,13 @@
                 action: () => openYtModal(),
               },
               {
+                label: "Search Music",
+                chevron: true,
+                iconKey: "visualizer",
+                caption: "Background Play",
+                action: () => pushMenu("web"),
+              },
+              {
                 label: "Settings",
                 chevron: true,
                 iconKey: "settings",
@@ -2357,6 +2416,13 @@
                 action: () => openYtModal(),
               },
               {
+                label: "Search Music",
+                chevron: true,
+                iconKey: "visualizer",
+                caption: "Audius • Radio",
+                action: () => pushMenu("web"),
+              },
+              {
                 label: "Delete Songs",
                 chevron: true,
                 iconKey: "songs",
@@ -2365,6 +2431,53 @@
               },
             ],
           };
+        }
+
+        if (menuId === "web") {
+          return {
+            title: "Search Music",
+            items: [
+              { label: "Search Audius", chevron: true, iconKey: "music", caption: "Free Music", action: () => openWebModal("audius") },
+              { label: "Audius Trending", chevron: true, iconKey: "nowplaying", caption: "Top Songs Now", action: () => showWebResults("Trending", () => WebMusic.audius.trending(webFetch), "nowplaying") },
+              { label: "Internet Archive", chevron: true, iconKey: "coverflow", caption: "Free Albums", action: () => openWebModal("archive") },
+              { label: "Internet Radio", chevron: true, iconKey: "sound", caption: "Live Stations", action: () => openWebModal("radio") },
+              { label: "Add Audio Link", chevron: false, iconKey: "folder", caption: "MP3 / M4A Links", action: () => openWebModal("link") },
+            ],
+          };
+        }
+
+        if (menuId === "web-results") {
+          const nav = currentNav();
+          if (nav.loading) {
+            return { title: nav.title, items: [{ label: "Loading…", iconKey: nav.iconKey, caption: "Please wait", action: () => {} }] };
+          }
+          if (nav.error) {
+            return { title: nav.title, items: [{ label: "Couldn't load results", iconKey: "info", caption: nav.error, action: () => goBack() }] };
+          }
+          if (!nav.results.length) {
+            return { title: nav.title, items: [{ label: "No results", iconKey: nav.iconKey, caption: "Try another search", action: () => goBack() }] };
+          }
+          const tracks = nav.results.filter((r) => r.kind !== "album");
+          const items = [];
+          if (tracks.length > 1) {
+            items.push({ label: `Add All (${tracks.length})`, iconKey: "songs", caption: "Queue All Songs", action: () => addWebTracks(tracks) });
+          }
+          for (const result of nav.results) {
+            if (result.kind === "album") {
+              items.push({
+                label: result.title, chevron: true, art: result.cover || null, iconKey: nav.iconKey, caption: result.artist,
+                action: () => showWebResults(result.title, () => WebMusic.archive.album(webFetch, result.id), "coverflow"),
+              });
+            } else {
+              const playingNow = playlist[currentIndex] && playlist[currentIndex].url === result.url;
+              items.push({
+                label: result.title, art: result.cover || null, iconKey: nav.iconKey, caption: result.artist,
+                chevronSvg: playingNow ? (isPlaying ? INLINE_SVGS.speaker : INLINE_SVGS.pause) : "",
+                action: () => addWebTracks([result], { play: true }),
+              });
+            }
+          }
+          return { title: nav.title, items };
         }
 
         if (menuId === "delete-songs") {
@@ -2520,6 +2633,10 @@
       function goBack() {
         if (ytModal.classList.contains("active")) {
           closeYtModal();
+          return;
+        }
+        if (webModal.classList.contains("active")) {
+          closeWebModal();
           return;
         }
         if (navStack.length > 1) {
@@ -2743,6 +2860,8 @@
             // The embedded video player only plays while the app is open.
             npSource.textContent = "YouTube Video • Keep App Open";
           }
+        } else if (track.type === "web") {
+          npSource.textContent = `${track.source} • ${track.live ? "Live Radio" : "Background Audio"}`;
         } else {
           npSource.textContent = "Local Audio";
         }
@@ -2777,8 +2896,9 @@
 
         if (usesEmbed(track)) updateMediaPosition();
         timeElapsed.textContent = formatTime(cur);
-        timeRemaining.textContent =
-          dur > 0 ? "-" + formatTime(Math.max(0, dur - cur)) : "-0:00";
+        timeRemaining.textContent = track.live
+          ? "LIVE"
+          : dur > 0 && isFinite(dur) ? "-" + formatTime(Math.max(0, dur - cur)) : "-0:00";
         const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
         scrubberFill.style.width = pct + "%";
         scrubberDiamond.style.left = pct + "%";
@@ -2800,7 +2920,7 @@
 
         const wasCurrent = index === currentIndex;
         playlist.splice(index, 1);
-        const saved = track.type !== "youtube" || saveYoutubeLibrary();
+        const saved = track.type === "local" || saveLibrary();
         upcomingShuffleIndex = null;
         if (wasCurrent) {
           playbackToken++;
@@ -3132,6 +3252,14 @@
             return;
           }
           showStatusToast("Stream unavailable");
+        } else if (track.type === "web") {
+          if (!track.noCors) {
+            // The host may not send CORS headers: play without visualizer access.
+            track.noCors = true;
+            playNativeSource(track, track.url, { resumeAt: track.live ? 0 : resumeAt });
+            return;
+          }
+          showStatusToast(track.live ? "Station offline" : "Can't play this link");
         } else {
           showStatusToast("Can't play this file");
         }
@@ -3399,6 +3527,23 @@
         }
       }
 
+      // Songs from Audius, Internet Archive, radio stations, and direct links
+      // are plain audio URLs that play natively (background-capable).
+      function createWebTrackObject(info) {
+        const title = info.title || "Untitled";
+        return {
+          type: "web",
+          url: info.url,
+          title,
+          artist: info.artist || info.source || "Web",
+          coverUrl: info.cover || "",
+          cover: info.cover || createPlaceholderCover(title),
+          source: info.source || "Web",
+          live: !!info.live,
+          noCors: !!info.noCors,
+        };
+      }
+
       function createYoutubeTrackObject(ytId, customTitle, customArtist) {
         let seed = 0;
         for (let i = 0; i < ytId.length; i++)
@@ -3453,6 +3598,150 @@
       }
 
       ytCancelBtn.addEventListener("click", closeYtModal);
+
+      // --- WEB MUSIC: AUDIUS, INTERNET ARCHIVE, RADIO, AUDIO LINKS ---
+      // These sources are plain audio files/streams, so they play through the
+      // native audio element and keep playing in the background.
+      const webFetch = (url, options) => fetch(url, options);
+
+      function anyModalOpen() {
+        return ytModal.classList.contains("active") || webModal.classList.contains("active");
+      }
+
+      const WEB_MODES = {
+        audius: {
+          title: "Search Audius", badge: "Audius", button: "Search", single: true,
+          placeholder: "Artist, song, or genre",
+          sub: "Free streaming music • plays in the background",
+          run: (q) => showWebResults(q, () => WebMusic.audius.search(webFetch, q), "music"),
+        },
+        archive: {
+          title: "Search Internet Archive", badge: "Archive.org", button: "Search", single: true,
+          placeholder: "Artist, album, or genre",
+          sub: "Free & public-domain albums and live shows",
+          run: (q) => showWebResults(q, () => WebMusic.archive.search(webFetch, q), "coverflow"),
+        },
+        radio: {
+          title: "Internet Radio", badge: "Radio", button: "Search", single: true, allowEmpty: true,
+          placeholder: "Station or genre (blank = top stations)",
+          sub: "Live stations • plays in the background",
+          run: (q) => showWebResults(q || "Top Stations", () => WebMusic.radio.search(webFetch, q), "sound"),
+        },
+        link: {
+          title: "Add Audio Link", badge: "Links", button: "Add", single: false,
+          placeholder: "Paste .mp3 / .m4a / .ogg links, or archive.org / audius.co pages (one per line)",
+          sub: "Direct audio links play in the background",
+          run: (text) => addWebLinks(text),
+        },
+      };
+      let webMode = null;
+
+      function openWebModal(mode) {
+        webMode = WEB_MODES[mode];
+        webModalTitle.textContent = webMode.title;
+        webModalBadge.textContent = webMode.badge;
+        webModalSub.textContent = webMode.sub;
+        webInput.placeholder = webMode.placeholder;
+        webInput.classList.toggle("single-line", webMode.single);
+        webInput.setAttribute("enterkeyhint", webMode.single ? "search" : "enter");
+        webGoBtn.textContent = webMode.button;
+        webModal.classList.add("active");
+        setTimeout(() => webInput.focus(), 50);
+      }
+
+      function closeWebModal() {
+        webModal.classList.remove("active");
+        webInput.value = "";
+        webInput.blur();
+      }
+
+      function submitWebModal() {
+        if (!webMode) return;
+        const value = webInput.value.trim();
+        if (!value && !webMode.allowEmpty) {
+          webModalSub.textContent = webMode.single ? "Type something to search." : "Paste at least one link.";
+          return;
+        }
+        const mode = webMode;
+        closeWebModal();
+        mode.run(value);
+      }
+
+      webGoBtn.addEventListener("click", submitWebModal);
+      webCancelBtn.addEventListener("click", closeWebModal);
+      webInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && webMode && webMode.single) {
+          e.preventDefault();
+          submitWebModal();
+        } else if (e.key === "Escape") {
+          closeWebModal();
+        }
+      });
+
+      // Push a results list that fills in when the search finishes.
+      async function showWebResults(title, loader, iconKey) {
+        const entry = { view: "menu", menuId: "web-results", selectedIndex: 0, title, iconKey, loading: true, results: [] };
+        navStack.push(entry);
+        renderCurrentView();
+        try {
+          entry.results = await loader();
+        } catch (error) {
+          console.warn("Web music search failed:", error);
+          entry.error = "Check your connection";
+        }
+        entry.loading = false;
+        if (currentNav() === entry) renderCurrentView();
+      }
+
+      // Add songs to the queue (skipping ones already there). With play, the
+      // first song starts now — like picking a song on an iPod.
+      function addWebTracks(list, { play = false } = {}) {
+        let firstIndex = -1;
+        let added = 0;
+        for (const info of list) {
+          let index = playlist.findIndex((t) => t.type === "web" && t.url === info.url);
+          if (index === -1) {
+            playlist.push(createWebTrackObject(info));
+            index = playlist.length - 1;
+            added++;
+          }
+          if (firstIndex === -1) firstIndex = index;
+        }
+        const saved = added ? saveLibrary() : true;
+        if (currentIndex === -1 && playlist.length) currentIndex = 0;
+        if (play && firstIndex >= 0) {
+          flowIndex = firstIndex;
+          loadAndPlay(firstIndex);
+          pushView("nowplaying");
+        } else {
+          renderCurrentView();
+          if (isPlaying) prefetchUpcoming();
+        }
+        // Picking a single song is self-explanatory: it starts playing.
+        if (!saved) showStatusToast("Save failed");
+        else if (!(play && list.length === 1)) {
+          showStatusToast(added ? `Added ${added} Song${added > 1 ? "s" : ""}` : "Already in Music");
+        }
+      }
+
+      async function addWebLinks(text) {
+        const parsed = WebMusic.parseLinks(text);
+        if (!parsed.direct.length && !parsed.archive.length && !parsed.audius.length) {
+          showStatusToast("No links found");
+          return;
+        }
+        showStatusToast("Adding links…");
+        const resolved = await Promise.all([
+          ...parsed.archive.map((id) => WebMusic.archive.album(webFetch, id).catch(() => [])),
+          ...parsed.audius.map((url) => WebMusic.audius.resolve(webFetch, url).catch(() => [])),
+        ]);
+        const tracks = [...parsed.direct, ...resolved.flat()];
+        if (!tracks.length) {
+          showStatusToast("Couldn't read links");
+          return;
+        }
+        addWebTracks(tracks, { play: !isPlaying });
+      }
 
       ytAddBtn.addEventListener("click", async () => {
         const raw = ytUrlInput.value.trim();
@@ -3510,7 +3799,7 @@
 
         // Queue all tracks non-intrusively without interrupting current song
         playlist.push(...tracksToAdd);
-        const saved = saveYoutubeLibrary();
+        const saved = saveLibrary();
         if (currentIndex === -1) {
           currentIndex = 0;
         }
@@ -3537,7 +3826,7 @@
           );
           // Save the updated titles from the current queue, so a track deleted
           // while metadata was loading cannot be accidentally restored.
-          if (!saveYoutubeLibrary()) showStatusToast("Save failed");
+          if (!saveLibrary()) showStatusToast("Save failed");
           renderCurrentView();
           if (tracksNeedingMetadata.includes(playlist[currentIndex])) updateMediaMetadata();
         }
@@ -3548,6 +3837,7 @@
 
       // --- HARDWARE BUTTON & WHEEL EVENT ROUTING ---
       function handleWheelStep(dir) {
+        if (anyModalOpen()) return;
         const nav = currentNav();
 
         if (nav.view === "menu") {
@@ -3610,7 +3900,7 @@
       }
 
       function handleCenterPress() {
-        if (ytModal.classList.contains("active")) return;
+        if (anyModalOpen()) return;
         const nav = currentNav();
 
         if (nav.view === "menu") {
@@ -3720,7 +4010,7 @@
       window.addEventListener("pointercancel", () => (isDragging = false));
 
       // Restore saved links without automatically starting playback.
-      const libraryRestored = restoreYoutubeLibrary();
+      const libraryRestored = restoreLibrary();
       setupMediaSession();
       renderCurrentView();
       if (!libraryRestored) setTimeout(() => showStatusToast("Library unavailable"), 1600);
